@@ -10,6 +10,8 @@ VLANs use software to emulate separate physical LANs. Each VLAN is thus a separa
 
 ### VLAN tag 
 
+IEEE 802.1q，是VLAN的正式标准，对Ethernet帧格式进行修改，在源MAC地址字段和协议类型字段之间加入4字节的802.1q Tag。
+
 802.1Q Tag包含4个字段，其含义如下：
 
 * Type
@@ -33,8 +35,20 @@ VLAN ID，长度为12比特，表示该帧所属的VLAN。在VRP中，可配置 
 以太网端口有三种链路类型：
 
 - Access：只能属于一个 VLAN，一般用于连接计算机的端口
-- Trunk：可以属于多个 VLAN，可以接收和发送多个 VLAN 的报文，一般用于交换机之间连接的接口
-- Hybrid：属于多个 VLAN，可以接收和发送多个 VLAN 报文，既可以用于交换机之间的连接，也可以 用户连接用户的计算机。 Hybrid 端口和 Trunk 端口的不同之处在于 Hybrid 端口可以允许多个 VLAN 的报文发送时不打标签，而 Trunk 端口只允许缺省 VLAN 的报文发送时不打标签
+
+  只允许默认vlan的以太网帧，Access端口在收到以太网帧后打上vlan标签，转发时在剥离vlan标签。
+
+  配合交换机VLAN PVID端口。
+
+- Trunk：可以属于多个 VLAN，可以接收和发送多个 VLAN 的报文，一般用于交换机之间连接的接口。
+
+  可以允许多个vlan通过，可以接受并转发多个vlan的报文一般作用于交换机之间连接的端口，在网络的分层结构方面，trunk被解释为"端口聚合"，就是把多个物理端口捆绑在一起作为一个逻辑端口使用，作用可以扩展带宽和做链路的备份。
+
+  > 可以在，trunk口配置允许通过的指定VLAN，默认是所有VLAN都可以通过。
+  >
+  > 类似,openvswitch中：`ovs-vsctl set port patch_to_vswitch trunk=222`，则只允许`VLAN 222` 的帧通过。
+
+- Hybrid：属于多个 VLAN，可以接收和发送多个 VLAN 报文，既可以用于交换机之间的连接，也可以 用户连接用户的计算机。 Hybrid 端口和 Trunk 端口的不同之处在于 Hybrid 端口可以允许多个 VLAN 的报文发送时不打标签，而 Trunk 端口只允许缺省 VLAN 的报文发送时不打标签。
 
  vlan的链路类型可以分为接入链路和干道链路。
 
@@ -42,7 +56,202 @@ VLAN ID，长度为12比特，表示该帧所属的VLAN。在VRP中，可配置 
 
 （2）干道链路（trunk link）指的交换机到上层设备如路由器的链路，可以理解为向广域网走的链路。这段链路由于要靠vlan来区分用户或者服务，所以一般都带有vlan tag。
 
+#### PVID and Trunk/Hibird
 
+Port-base VLAN ID，
+
+PVID所在的端口必然是untag port，保障进去交换机内部的Frame是没有tag的，才能转给其他不同vlan tag的端口，从PVID端口出现的包，自动打上Port-base VLAN ID，用于在三层交换机上路由传播。
+
+Port VLAN ID，代表端口缺省VLAN ID.
+
+PVID并不是加在帧头的标记，而是端口的属性，用来标识端口接收到的未标记的帧。也就是说，当端口收到一个未标记的帧时，则把该帧转发到VID和本端口PVID相等的VLAN中去。
+
+The PVID of a port is the VLAN id that will be assigned to any untagged frames entering the switch on that port (assuming the switch is using port-based VLAN classification). This is a concept that is defined in IEEE 802.1Q.
+
+例如: 此port的PVID = 1，代表此port可以转发VLAN1的封包，因为Untag的封包进入port後，会被标上VID1。
+
+　PVID英文解释为Port-base VLAN ID，是基于端口的VLAN ID，一个端口可以属于多个vlan，但是只能有一个PVID，收到一个不带tag头的数据包时，会打上PVID所表示的vlan号，视同该vlan的数据包处理。
+　　一个物理端口只能拥有一个PVID，当一个物理端口拥有了一个PVID的时候，必定会拥有和PVID相等的VID，而且在这个VID上，这个物理端口必定是Untagged Port。
+
+> 若有 Tag 的封包进入 switch，则其经过 untagged port 时，Tag 将被去除 。
+
+　　**PVID的作用只是在交换机从外部接受到可以接受Untagged 数据帧的时候给数据帧添加TAG标记用的，在交换机内部转发数据的时候PVID不起任何作用。**
+
+Hybrid类型接口的PVID是可以手动更改的。
+华为设备通过命令 port hybrid pvid vlan xx;
+
+Access类型接口将接口化进某一个VLAN时，接口的PVID也随之改变。
+
+Trunk类型的接口的PVID也是可以手动改的。
+华为设备通过命令 port trunk pvid vlan xx;
+
+**VID**：VLAN ID，表示端口所处的VLAN编号，是**VLAN属性**。
+
+**PVID**：Port vlan ID，表示缺省端口的VLAN标号，是**端口属性**。
+
+在设置PVID和VID时，要保持PVID和VID的一致。譬如：一个端口属于几个VLAN，那么这个端口就会具有好几个VID，但是只能有一个PVID，并且PVID号应该是VID号中的一个，否则交换机不识别。
+
+
+
+#### VLANID
+
+VLAN TAG包的VLAN ID号，有效范围是1-4094，0和4095都为协议保留值.
+
+VLAN内的Port可以接收发自这个VLAN的封包
+
+例如: 此port的VID = 2，代表此port可以接收VLAN2的封包。
+
+PVID与VID范例 :
+
+当Port1同时属于VLAN1、VLAN2和VLAN3时，而它的PVID为1，那么Port1可以接收到VLAN1，2，3的封包，但发出的封包只能发到VLAN1中。
+
+> 当 port 的 PVID = 1时，代表此 port 可以转发 VLAN1 的封包
+
+##### tag port ： 针对VID
+
+从此port 转发出的封包上都将有Tag (tagged)。若有非Tag的封包进入Switch，则其经过tagged port时，Tag将被加上。
+
+将使用在ingress(流入)端口上的pvid设定作为Tag的vlan id。(用于交换机与交换机之间传输)。
+
+##### untag port：针对VID
+
+此port**转发出**的封包上都没有Tag (untagged)。若有Tag的封包进入switch，则其经过untagged port时，Tag将被去除。(用于一般设备、电脑)
+
+所谓的untagged Port和tagged Port不是讲述物理端口的状态，而是将是物理端口所拥有的某一个VID的状态，所以一个物理端口可以在某一个VID上是untagged Port，在另一个VID上是tagged Port。 
+
+untag port和tag port是针对VID来说的，和PVID没有什么关系。比如有一个交换机的端口设置成untag port，但是从这个端口进入交换机的网络包如果没有vlan tag的话，就会被打上该端口的PVID，不要以为它是untag port就不会被打上vlan tag。
+
+#### 收发报文
+
+PVID的作用只是在交换机从外部接受到可以接受Untagged 数据帧的时候给数据帧添加TAG标记用的.
+
+华为交换机 hybird模式配置实例
+
+拓扑： PC_1 连接 inter0/1 , PC_2 连接 inter0/2
+
+```bash
+[Switch-Ethernet0/1]int e0/1
+[Switch-Ethernet0/1]port link-type hybrid
+[Switch-Ethernet0/1]port hybrid pvid vlan 10
+## [Huawei-GigabitEthernet0/0/1]port hybrid untagged vlan 100 200
+[Switch-Ethernet0/1]port hybrid vlan 10 20 untagged
+## 0.0
+[Switch-Ethernet0/1] int e0/2
+[Switch-Ethernet0/2]port link-type hybrid
+[Switch-Ethernet0/2]port hybrid pvid vlan 20
+## [Huawei-GigabitEthernet0/0/1]port hybrid untagged vlan 100 200
+[Switch-Ethernet0/2]port hybrid vlan 10 20 untagged
+-----------------------------------
+## IP: PC_1 192.168.1.10 gw 192.168.1.254
+## PC_2 192.168.2.10 gw 192.168.2.254
+[Huawei]vlan 200
+[Huawei-vlan200]interface vlan 200
+[Huawei-Vlanif200]
+Jan 21 2022 23:13:43-08:00 Huawei %%01IFNET/4/IF_STATE(l)[2]:Interface Vlanif200
+ has turned into UP state.
+[Huawei-Vlanif200]ip address 192.168.2.254 24
+```
+
+此时inter e0/1和inter e0/2下的所接的PC是可以互通的，但互通时数据所走的往返vlan是不同的。
+以下以inter e0/1下的所接的pc1访问inter e0/2下的所接的pc2为例进行说明
+
+##### PC_1 --> PC_2
+
+pc1所发出的数据，由inter0/1所在的pvid vlan10封装vlan10的标记后送入交换机，交换机发现inter e0/2允许vlan 10的数据通过，于是数据被转发到inter e0/2上，由于inter e0/2上vlan 10是untagged的，于是交换机此时去除数据包上vlan10的标记，以普通包的形式发给pc2，此时pc1->p2走的是vlan10
+
+##### PC_2--> PC_1
+
+分析pc2给pc1回包的过程，
+
+pc2所发出的数据，由inter0/2所在的pvid vlan20封装vlan20的标记后送入交换机，交换机发现inter e0/1允许vlan 20的数据通过，于是数据被转发到inter e0/1上，由于inter e0/1上vlan 20是untagged的，于是交换机此时去除数据包上vlan20的标记，以普通包的形式发给pc1，此时pc2->pc1走的是vlan20
+
+交换机端口的tag与untag
+https://blog.51cto.com/centaurs1987/1437083
+
+
+
+**收报文：**
+
+Access端口：
+1、收到一个报文；
+2、判断是否有VLAN信息；如果没有则转到第3步，否则转到第4步；
+3、打上端口的PVID，并进行交换转发；
+4、直接丢弃(缺省)；
+Trunk端口：
+1、收到一个报文；
+2、判断是否有VLAN信息；如果没有则转到第3步，否则转到第4步；
+3、打上端口的PVID，并进行交换转发；
+4、判断该trunk端口是否允许该VLAN的数据进入；如果可以则转发，否则丢弃；
+Hybrid端口：
+1、收到一个报文；
+2、判断是否有VLAN信息；如果没有则转到第3步，否则转到第4步；
+3、打上端口的PVID，并进行交换转发；
+
+4、判断该Hybrid端口是否允许该VLAN的数据进入：如果可以则转发，否则丢弃；
+
+ **发报文：**
+
+Access端口：
+1、将报文的VLAN信息剥离，直接发送出去；
+Trunk端口：
+1、比较端口的PVID和将要发送报文的VLAN信息；
+2、如果两者相等则转到第3步，否则转到第4步；
+3、剥离VLAN信息，再发送；
+4、直接发送；
+Hybrid端口：
+1：判断该VLAN在本端口的属性(displayinterface即可看到该端口对哪些VLAN是untag,哪些VLAN是tag。)
+2、如果是untag则转到第3步，如果是tag则转到第4步；
+3、剥离VLAN信息，再发送；
+4、直接发送；
+
+### 交换机转发VLAN帧
+
+#### 基础帧转发
+
+二层交换机最基本的功能包括：
+
+- MAC 地址学习：当交换机从它的某个端口收到数据帧时，它将端口的 ID 和帧的源 MAC 地址保存到它的内部MAC表中。这样，当将来它收到一个要转发到该 MAC 地址的帧时，它就知道直接从该端口转发出去了。
+- 数据帧转发：交换机在将从某个端口收到数据帧，再将其从某个端口转发出去之前，它会做一些逻辑判断：
+  - 如果帧的目的 MAC 地址是广播或者多播地址的话，将其从交换机的所有端口（除了传入端口）上转发。
+  - 如果帧的目的MAC地址在它的内部MAC表中能找到对应的输出端口的话（MAC 地址学习过程中保存的），将其从该端口上转发出去。
+  - 对其它情况，将其从交换机的所有端口（除了传入端口）上转发。
+- 加 VLAN 标签/去 VLAN 标签：
+  - 帧接收：从 trunk port 上收到的数据帧必须是加了标签的。从 access port 上收到的数据帧必须是没有加标签的，否则该帧将会被抛弃。
+  - 帧处理：根据上述转发流程决定其发出的端口。
+  - 帧发出：从 trunk port 发出的帧是加了标签的。从 access port 上发出的帧必须是没加标签的。
+
+#### VLAN Frame 转发
+
+ 默认情况下，交换机的所有端口都处于VLAN 1 中，也就相当于没有配置 VLAN。该机制说明如下：
+
+1. PC_A 发一个帧到交换机的 1 端口，其目的MAC地址为 PC_B 的 MAC。
+2. 交换机比较其目的 MAC 地址和它的内部 MAC Table，发现它不存在（此时表为空）。在决定**泛洪**之前，它把端口 1 和 PC_A 的 MAC 地址存进它的 MAC Table。
+3. 交换机将帧拷贝多份，分别从2和3端口发出。
+4. PC_B 收到该帧以后，发现其目的 MAC 地址和他自己的 MAC 地址相同。它发出一个回复帧进入端口3。
+5. 交换机将 PC_B 的 MAC地址和端口3 存在它的 MAC 表中。
+6. 因为该帧的目的地址为PC_A 的 MAC 地址它已经在 MAC 表中，交换机直接将它转发到端口1，达到PC_A。
+
+配置了 VLAN 的交换机的该机制类似，只不过：
+
+（1）MAC 表格中每一行有不同的 VLAN ID。做比较的时候，拿传入帧的目的 MAC 地址和 VLAN ID 和此表中的行数据相比较。如果都相同，则选择其 Ports 作为转发出口端口。
+
+（2）如果没有吻合的表项，则将此帧从所有有同样 VLAN ID 的 Access ports 和 Trunk ports 转发出去。
+
+#### Untaged frames
+
+what about untagged frames entering the switch from the PC or printer (They’ll be untagged because the PC or printer doesn’t know about VLAN). This is where PVID comes in. PVID tells the switch what to do with those untagged incoming frames. 
+
+VLAN隔离个广播域，
+
+> 常见的广播通信：
+>
+> - ARP请求：建立IP地址和MAC地址的映射关系。
+> - RIP：一种路由协议。
+> - DHCP：用于自动设定IP地址的协议。
+>
+> end
+
+从Access port进入的包大多数是untag frame...
 
 ### VLAN的不足
 
@@ -106,19 +315,84 @@ VLAN在分割了二层广播域，也严格地隔离了各个VLAN之间的任何
 
 
 
-##### 方法3：三层交换机
+##### 方法3：三层交换机，VLANIF
 
 三层交换机在原有的二层交换机上增加了路由功能，因为数据没有像单臂路由那样经过物理线路进行路由，很好解决了带宽瓶颈的问题。
 
 在三层交换机上配置VLANIF接口来实现VLAN间路由。如果网络上有多个VLAN，则需要给每个VLAN配置一个VLANIF接口，并给每个VLANIF接口配置一个IP地址。用户设置的缺省网关就是三层交换机中VLANIF接口的IP地址。
 
+```bash
+<Huawei>sys
+Enter system view, return user view with Ctrl+Z.
+## system-view 模式是 []
+[HUAWEI] interface gigabitethernet 0/0/1
+[HUAWEI-GigabitEthernet1/0/1] port link-type access
+[HUAWEI-GigabitEthernet1/0/1] port default vlan 100
+[HUAWEI-GigabitEthernet1/0/1] quit
+[HUAWEI] display port vlan
+
+### 
+<Huawei>sys
+Enter system view, return user view with Ctrl+Z.
+[Huawei]interface vlanif 100
+[Huawei-Vlanif100]ip address 192.168.1.254 24
+[Huawei-Vlanif100]
+
+```
+
+
+
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/layer-3-switch.jpg)
 
-##### 不同VLAN中IP(subnet)重复：大问题
+##### 方法4：Hybrid/Trunk Port
+
+华为交换机 hybird模式配置实例 ，不用使用vlanif
+
+拓扑： PC_1 连接 inter0/1 , PC_2 连接 inter0/2
+
+```bash
+[Switch-Ethernet0/1]int e0/1
+[Switch-Ethernet0/1]port link-type hybrid
+[Switch-Ethernet0/1]port hybrid pvid vlan 10
+## [Huawei-GigabitEthernet0/0/1]port hybrid untagged vlan 100 200
+[Switch-Ethernet0/1]port hybrid vlan 10 20 untagged
+## 0.0
+[Switch-Ethernet0/1] int e0/2
+[Switch-Ethernet0/2]port link-type hybrid
+[Switch-Ethernet0/2]port hybrid pvid vlan 20
+## [Huawei-GigabitEthernet0/0/1]port hybrid untagged vlan 100 200
+[Switch-Ethernet0/2]port hybrid vlan 10 20 untagged
+-----------------------------------
+## IP: PC_1 192.168.1.10 gw 192.168.1.254
+## PC_2 192.168.2.10 gw 192.168.2.254
+[Huawei]vlan 200
+[Huawei-vlan200]interface vlan 200
+[Huawei-Vlanif200]
+Jan 21 2022 23:13:43-08:00 Huawei %%01IFNET/4/IF_STATE(l)[2]:Interface Vlanif200
+ has turned into UP state.
+[Huawei-Vlanif200]ip address 192.168.2.254 24
+```
+
+此时inter e0/1和inter e0/2下的所接的PC是可以互通的，但互通时数据所走的往返vlan是不同的。
+以下以inter e0/1下的所接的pc1访问inter e0/2下的所接的pc2为例进行说明
+
+PC_1 --> PC_2
+
+pc1所发出的数据，由inter0/1所在的pvid vlan10封装vlan10的标记后送入交换机，交换机发现inter e0/2允许vlan 10的数据通过，于是数据被转发到inter e0/2上，由于inter e0/2上vlan 10是untagged的，于是交换机此时去除数据包上vlan10的标记，以普通包的形式发给pc2，此时pc1->p2走的是vlan10
+
+PC_2--> PC_1
+
+分析pc2给pc1回包的过程，
+
+pc2所发出的数据，由inter0/2所在的pvid vlan20封装vlan20的标记后送入交换机，交换机发现inter e0/1允许vlan 20的数据通过，于是数据被转发到inter e0/1上，由于inter e0/1上vlan 20是untagged的，于是交换机此时去除数据包上vlan20的标记，以普通包的形式发给pc1，此时pc2->pc1走的是vlan20
+
+
+
+#### 不同VLAN中IP(subnet)重复：大问题
 
 公有云提供商的业务要求将实体网络租借给多个不同的用户，这些用户对于网络的要求有所不同，而不同用户租借的网络有很大的可能会出现IP地址、MAC地址的重叠，传统的VLAN仅仅解决了同一链路层网络广播域隔离的问题，而并没有涉及到网络地址重叠的问题，因此需要一种新的技术来保证在多个租户网络中存在地址重叠的情况下依旧能有效通信的技术。
 
-##### MAC表数量限制
+#### MAC表数量限制
 
 TOR（Top Of Rack）交换机的MAC表大小限制。
 
@@ -198,11 +472,15 @@ Let's say I have four PCs connected to one CISCO switch.
 Can PC1 ping PC2?
 Can PC3 ping PC4?
 
+### OpenvSwitch（OVS）+VLAN组网
 
+https://www.1024sou.com/article/60783.html
 
 ### 引用
 
 1. https://blog.csdn.net/weixin_52122271/article/details/112383249
 2. https://blog.51cto.com/u_13212728/2516078
-3. 
+3. https://blog.51cto.com/centaurs1987/1437083
+3. https://www.1024sou.com/article/60783.html
+3. https://blog.csdn.net/bunny_nini/article/details/104545978
 
