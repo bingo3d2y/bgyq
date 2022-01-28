@@ -62,6 +62,12 @@ Port-base VLAN ID，
 
 PVID所在的端口必然是untag port，保障进去交换机内部的Frame是没有tag的，才能转给其他不同vlan tag的端口，从PVID端口出现的包，自动打上Port-base VLAN ID，用于在三层交换机上路由传播。
 
+> 一个交换机上可能有N个VLAN所以需要untaged保障来自不同vlan的包可以进入到该交换机。
+>
+> eg： 一个交换机 16 个端口，8个在VLAN_1，另外8个在VLAN_2。
+>
+> VLAN_1和VLAN_2需要 
+
 Port VLAN ID，代表端口缺省VLAN ID.
 
 PVID并不是加在帧头的标记，而是端口的属性，用来标识端口接收到的未标记的帧。也就是说，当端口收到一个未标记的帧时，则把该帧转发到VID和本端口PVID相等的VLAN中去。
@@ -121,7 +127,13 @@ PVID与VID范例 :
 
 untag port和tag port是针对VID来说的，和PVID没有什么关系。比如有一个交换机的端口设置成untag port，但是从这个端口进入交换机的网络包如果没有vlan tag的话，就会被打上该端口的PVID，不要以为它是untag port就不会被打上vlan tag。
 
-#### 收发报文
+#### 收发报文：？
+
+这个没看懂，这里设置hybird port干嘛，直接access port就行了。
+
+因为可以借助layer 3 switch 实现 路由，因为 pc连接 e0/1 和 e0/2时，也要配置网关和路由呢。
+
+下面的例子难道是不借助 Layer 3 switch？？？
 
 PVID的作用只是在交换机从外部接受到可以接受Untagged 数据帧的时候给数据帧添加TAG标记用的.
 
@@ -142,14 +154,6 @@ PVID的作用只是在交换机从外部接受到可以接受Untagged 数据帧�
 ## [Huawei-GigabitEthernet0/0/1]port hybrid untagged vlan 100 200
 [Switch-Ethernet0/2]port hybrid vlan 10 20 untagged
 -----------------------------------
-## IP: PC_1 192.168.1.10 gw 192.168.1.254
-## PC_2 192.168.2.10 gw 192.168.2.254
-[Huawei]vlan 200
-[Huawei-vlan200]interface vlan 200
-[Huawei-Vlanif200]
-Jan 21 2022 23:13:43-08:00 Huawei %%01IFNET/4/IF_STATE(l)[2]:Interface Vlanif200
- has turned into UP state.
-[Huawei-Vlanif200]ip address 192.168.2.254 24
 ```
 
 此时inter e0/1和inter e0/2下的所接的PC是可以互通的，但互通时数据所走的往返vlan是不同的。
@@ -204,6 +208,19 @@ Hybrid端口：
 3、剥离VLAN信息，再发送；
 4、直接发送；
 
+### VLANIF：6
+
+vlanif , vlan interface只是个虚拟接口，一般在支持802.1q的三层交换机，准确来说，它叫做SVI（Switch Virtual Interface），是一个三层接口，只会在Layer 3交换机上出现，通常用来为某个VLAN提供最后的路由（网关）服务。因为这个接口在交换机上不真实地存在，所以叫做虚接口。
+
+```bash
+[Huawei]interface vlanif 111
+Error: The VLAN does not exist.
+```
+
+以三层交换机为例，假设24个端口一半是vlan 1,一半是vlan2。然后网关又要设在三层交换机上，你说网关应该设在哪个端口上呢？下面的接口全是二层接口，是没有办法设置ip地址的。这个时候有一个虚拟的接口这个事就好办了，虚拟接口1作为vlan1的三层网关接口，虚拟接口2作为vlan2的三层网关接口，这个虚拟接口就叫vlan interface.
+
+
+
 ### 交换机转发VLAN帧
 
 #### 基础帧转发
@@ -253,6 +270,32 @@ VLAN隔离个广播域，
 
 从Access port进入的包大多数是untag frame...
 
+### vlan间访问控制
+
+一台Switch 24 port 分三个VLAN，第port 24连到firewall，各个VLAN之间不能互通，但全透过port 24上网。
+
+设定方式
+
+1.分别设定VLAN1 : 1-8&24、VLAN2 : 9-16&24、VLAN3 :17-23&24、VLAN4 :1-24
+
+2.设定PVID及VID 如下图所示
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vlan-untaged-port.jpg)
+
+说明:
+
+PC1接在Port1，PC1发送一个Untag的封包从Port1进入，Port1的PVID=1，此Untag的封包则变成带VID=1的tag封包，在switch内移动，可移动范围为VID=1的port，所以Port 1-8、24可通行也可透过port 24 连接到firewall上网。
+
+而防火墙透过port 24进入的Untag的封包，因Port 24 的PVID=4
+
+此Untag的封包则变成带VID=4的tag封包，在switch内移动，可移动范围为VID=4的port，所以Port 1-24 都可通行，所以port 24可以跟port 1 通。
+
+备注说明 : untagged port & tagged port
+
+PC1接在Port1，PC2接在Port5，因为这两个port都是untagged port，所以PC1的Untag的封包从Port1的进入后带上VID1的tag，要从Port5出来时，因为untagged port所以会将Tag移掉，再把Untag的封包交给PC2。
+
+tagged port则不会将Tag移掉，会将封包交到正确的VLAN。
+
 ### VLAN的不足
 
 #### VLAN 数量
@@ -277,6 +320,8 @@ QinQ报文在运营商网络中传输时带有双层VLAN Tag：
 #### VLAN间通讯互联
 
 VLAN在分割了二层广播域，也严格地隔离了各个VLAN之间的任何二层流量，属于不同VLAN的用户之间不能直接进行二层通信。需要借助”三层设备“实现不同VLAN之间的通讯。
+
+
 
 ##### 方法1：普通路由器互联
 
@@ -325,13 +370,16 @@ VLAN在分割了二层广播域，也严格地隔离了各个VLAN之间的任何
 <Huawei>sys
 Enter system view, return user view with Ctrl+Z.
 ## system-view 模式是 []
+## [HUAWEI] sysname SW2//修改设备的名称为SW2，便于识别
+## 创建vlan
+[HUAWEI] vlan 100
 [HUAWEI] interface gigabitethernet 0/0/1
 [HUAWEI-GigabitEthernet1/0/1] port link-type access
 [HUAWEI-GigabitEthernet1/0/1] port default vlan 100
 [HUAWEI-GigabitEthernet1/0/1] quit
 [HUAWEI] display port vlan
 
-### 
+### 添加vlanif
 <Huawei>sys
 Enter system view, return user view with Ctrl+Z.
 [Huawei]interface vlanif 100
@@ -344,11 +392,15 @@ Enter system view, return user view with Ctrl+Z.
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/layer-3-switch.jpg)
 
-##### 方法4：Hybrid/Trunk Port
+##### 方法3.5：Hybrid/Trunk Port： layer 2 switch
 
-华为交换机 hybird模式配置实例 ，不用使用vlanif
+这个例子应该是在layer 2 switch上实现vlan互通的例子
 
-拓扑： PC_1 连接 inter0/1 , PC_2 连接 inter0/2
+拓扑： 
+
+* PC_1 连接 inter0/1，port 属于vlan 100
+*  PC_2 连接 inter0/2， port属于vlan 200
+* PC_4连接 inter0/3 ， port属于vlan 100
 
 ```bash
 [Switch-Ethernet0/1]int e0/1
@@ -363,20 +415,12 @@ Enter system view, return user view with Ctrl+Z.
 ## [Huawei-GigabitEthernet0/0/1]port hybrid untagged vlan 100 200
 [Switch-Ethernet0/2]port hybrid vlan 10 20 untagged
 -----------------------------------
-## IP: PC_1 192.168.1.10 gw 192.168.1.254
-## PC_2 192.168.2.10 gw 192.168.2.254
-[Huawei]vlan 200
-[Huawei-vlan200]interface vlan 200
-[Huawei-Vlanif200]
-Jan 21 2022 23:13:43-08:00 Huawei %%01IFNET/4/IF_STATE(l)[2]:Interface Vlanif200
- has turned into UP state.
-[Huawei-Vlanif200]ip address 192.168.2.254 24
 ```
 
 此时inter e0/1和inter e0/2下的所接的PC是可以互通的，但互通时数据所走的往返vlan是不同的。
 以下以inter e0/1下的所接的pc1访问inter e0/2下的所接的pc2为例进行说明
 
-PC_1 --> PC_2
+PC_1/pc4 --> PC_2
 
 pc1所发出的数据，由inter0/1所在的pvid vlan10封装vlan10的标记后送入交换机，交换机发现inter e0/2允许vlan 10的数据通过，于是数据被转发到inter e0/2上，由于inter e0/2上vlan 10是untagged的，于是交换机此时去除数据包上vlan10的标记，以普通包的形式发给pc2，此时pc1->p2走的是vlan10
 
