@@ -1,0 +1,35 @@
+## 经典网络 and VPC
+
+### 经典网络：0.0 Openstack
+
+今天看到了cloudos上的经典网络类型：
+
+* flat
+* vlan
+
+然后，搜索了下，这就是Openstack...
+
+openstack的neutron负责为虚拟机提供网络，而且openstack是假设多租户的，那多租户之间的隔离问题，它当然要提供支持，下面我们就看一下neutron是怎么实现的；
+
+* flat: neutron中创建的网络是有“type”的，其中最基础的一种type就是“flat”，顾名思义，“平坦”就是指都在一个空间下，也就是没有做二层上的隔离，虚拟机都在同一个二层，同一个广播域；
+
+  这种”平坦“的大二层网络，虽然实现、管理相对简单，但也会有诸多问题，除了安全方面，还有广播风暴等问题；
+
+* vlan: neutron中创建”vlan“这种类型的网络，就是主要使用的二层隔离方案，VLAN（虚拟局域网）本身就是交换机广泛使用的二层隔离技术；
+
+  这种方案也有一定的局限性，首先管理相对麻烦，需要配合设置物理交换机，另外VLAN的可用数量有限制，VLAN的ID号仅有四千多个，我们假设每个租户分配1个VLAN，那最多也就能支持四千多个租户；
+
+Openstack 还支持VxLAN的网络（Overlay）方案：
+
+Open vSwitch 支持 VXLAN 和 GRE 这两种 overlay network。因为 OpenStack 对于 VXLAN 与 GRE 配置和实现差别不大，这里只讨论如何实施 VXLAN。
+
+https://www.jianshu.com/p/06b86fde6e15
+
+每天5分分钟Openstack系列，146节有配置。
+
+https://www.jianshu.com/p/4c06dff6cea8
+
+### VPC
+
+VPC（virtual private cloud），不是个技术专有名词，而是亚马逊AWS创造的一个产品层面的名词；租户网络彻底隔离、IP段都能重叠、路由器、网络拓扑都能由自己定义，这还不是”虚拟私有云“吗！
+

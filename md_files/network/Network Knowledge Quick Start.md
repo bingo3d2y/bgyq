@@ -116,6 +116,55 @@ ARP： Address Resolution Protocol
 
 邻居发现协议NDP（Neighbor Discovery Protocol）是IPv6协议体系中一个重要的基础协议。邻居发现协议替代了IPv4的ARP（Address Resolution Protocol）和ICMP路由器发现（Router Discovery），它定义了使用ICMPv6报文实现地址解析，跟踪邻居状态，重复地址检测，路由器发现以及重定向等功能。
 
+#### CT
+
+Communication Technology
+
+>  IT, Information Technology
+>
+> IT业和CT业的壁垒越来越不明显，现在已经形成了一个新的行业–ICT业，Information Communication Technology(信息、通信技术)。
+
+CT业被称为电信业，Telecommunication。那是因为最早期的通信都是电报、电话之类的技术，所以也被称为电信技术。
+
+通信业的企业又分为运营商、通信制造业、通信服务支持，一些通信业的施工单位等。
+
+通信业的运营商在国内我们比较熟悉的是中国移动、中国联通、中国电信，现在又多了一个中国广电。
+
+通信业的制造业在中国比较有名气的是三个：华为、中兴、信科。全球范围内，通信业的制造业比较强大的也就是诺基亚、爱立信、华为、中兴这四家了。
+
+
+#### P、PE、CE
+
+P（Provider）、PE（Provider Edge）、CE（Customer Edge）属于mpls vpn里的概念。在VPN概念中，把整个网络中的路由器分为三类：
+
+**第一类，运营商骨干路由器（P）**
+
+**第二类，运营商边缘路由器（PE）**，PE充当IP VPN接入路由器，即Provide的边缘设备。服务提供商骨干网的边缘路由器，它相当于标签边缘路由器（LER）。PE路由器连接CE路由器和P路由器，是最重要的网络节点。用户的流量通过PE路由器流入用户网络，或者通过PE路由器流到MPLS骨干网。
+
+**第三类，用户边缘路由器（CE）**，服务提供商所连接的用户端路由器，CE路由器通过连接一个或多个PE路由器，为用户提供服务接入。CE路由器通常是一台IP路由器，它与连接的PE路由器建立邻接关系。
+
+**用户站点**：用户端网络的总称，一个用户站点可以通过一条或多条链路连接服务提供商的骨干网络。
+
+#### CR、AR、BR、SR
+
+CR（Core Router，核心路由器）、AR（Access Router，接入路由器）、BR（Broadband Router，汇聚路由器）、SR（Service Router，业务路由器）
+
+一般的ip网络中，根据其拓扑结构，可以把路由器分为边缘路由器BR，接入路由器AR，核心路由器CR。
+
+PE或者AR基本是一个概念，某些运营商称为PE比如联通，某些运营商称为AR比如移动，叫做接入路由器，是CE的直接上级路由器。
+
+所有的软交换站点接入CE都上联到PE或者AR，然后PE或者AR接入运营商的IP骨干网。
+
+三大运营商不同的叫法，实质上是同一个设备作用：
+
+**运营商骨干（核心）路由器---运营商边缘（接入）路由器---用户边缘路由器<=>P（CR）-PE（AR)-CE（BR）**
+
+AR\BR\CR\SR都可以做PE\CE\P设备，一般CR\BR是不会做PE设备的，只做P设备，AR作为PE设备。
+
+除非网络完全建设开，CR\BR在做P设备时兼做PE设备，SR为业务路由器，一般做PE设备。
+
+
+
 ### Loopback Interface
 
 #### VIP 32 bits mask 
@@ -197,7 +246,22 @@ R1内有一条路由，目标网段是10.112.127.0/24，而下一跳地址是10.
 
 在BGP的知识点内，就有这么一条：BGP路由的下一跳地址属性（Next-Hop属性）是BGP邻居的更新源地址。因为iBGP邻居通常是用Loopback 地址，所以iBGP的路由也通常是递归路由。虽然教材上说iBGP用Loopback地址做更新源是为了更稳定，但这也不代表iBGP就必须要用Loopback地址做更新源，因为在一些极端的场合下，递归路由可能造成路由环路。
 
- 
+####  loopback 主机网卡双活
+
+添加一个32位掩码的IP地址到Loopback接口：
+**ip addr add dev lo 33.33.33.33/32**
+再添加两条路由
+**ip route add 0.0.0.0/0 via 1.1.1.2 metric 10 src 33.33.33.33
+ip route add 0.0.0.0/0 via 2.2.2.2 metric 20 src 33.33.33.33**
+然后在其网卡1直连的机器1上配置一条路由：
+**route add -host 33.33.33.33 gw 1.1.1.1 (1.1.1.1是网卡1的IP地址)**
+然后在其网卡2直连的机器2上配置一条路由：
+**route add -host 33.33.33.33 gw 2.2.2.1 (2.2.2.1是网卡2的IP地址)**
+
+> 这就是 递归路由了趴~~
+
+效果是什么？效果就是网卡1或者网卡2由于某种原因down掉了，只要另一个还up，33.33.33.33这个地址就是可达的，同时33.33.33.33也是提供服务的地址。在这个例子中，网卡上配置的1.1.1.1，2.2.2.1这两个IP地址完全是用于IP路由寻址的，而标示主机的33.33.33.33则配置在Loopback接口上。Loopback接口的IP地址被认为只能是最后一跳，因为不能将它用于寻址。
+
 
 #### 路由器 loopback端口
 
@@ -236,6 +300,10 @@ neighbor update-source loopback 0
 
 
 
+
+
 ### 引用
 
-https://zhuanlan.zhihu.com/p/398162417
+1. https://zhuanlan.zhihu.com/p/398162417
+2. https://blog.csdn.net/qq_29229567/article/details/97813141
+3. http://www.mryu.top/notes/311.html
