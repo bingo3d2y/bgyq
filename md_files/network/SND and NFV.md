@@ -71,6 +71,8 @@ SDN：Software-Defined Network
 * 目标是简化网络管理和控制
 * 核心思想是控制与转发的分离
 
+
+
 为了解决传统网络的问题，提出了SDN（software-defined networking）解决方案：
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/sdn-arch.png)
@@ -115,6 +117,10 @@ SDN通过标准的南向接口屏蔽了底层物理转发设备的差异，实�
 2.实现网络的配置与管理
 3.面向流量工程而设计，如实现路径计算，包括传送链路的带宽与开销等属性、链路状态和拓扑信息等。
 简单介绍几个以实现南向接口协议
+
+#### 华三 SDN应用
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/sdn应用.jpg)
 
 
 

@@ -8,6 +8,10 @@ Creating a Vlan means you are dividing up the BROADCAST DOMAINS.
 
 VLANs use software to emulate separate physical LANs. Each VLAN is thus a separate broadcast domain and a separate network.
 
+### VLAN 好处：666
+
+在underlay环境下不同网络的设备需要连接至不同的交换机下，如果要改变设备所属的网络，则要调整设备的连线。引入vlan后，调整设备所属网络只需要将设备加入目标vlan下，避免了设备的连线调整。
+
 ### VLAN tag 
 
 IEEE 802.1q，是VLAN的正式标准，对Ethernet帧格式进行修改，在源MAC地址字段和协议类型字段之间加入4字节的802.1q Tag。
@@ -97,6 +101,47 @@ Trunk类型的接口的PVID也是可以手动改的。
 
 在设置PVID和VID时，要保持PVID和VID的一致。譬如：一个端口属于几个VLAN，那么这个端口就会具有好几个VID，但是只能有一个PVID，并且PVID号应该是VID号中的一个，否则交换机不识别。
 
+##### Trunk Port
+
+```bash
+[SW1] interface gigabitEthernet0/0/24
+[SW1-GigabitEthernet0/0/24] port link-type trunk
+[SW1-GigabitEthernet0/0/24] port trunk allow-pass vlan 10 20
+```
+
+由于VLAN Trunk可以传输多个VLAN数据，Ethernet Frame在VLAN Trunk上传输时，需要带上802.1Q定义的VLAN tag，这样交换机才能区分Ethernet Frame到底属于哪个VLAN。VLAN Trunk的具体使用过程如下：
+
+◆    当最左侧服务器想要访问最右侧服务器，最左侧服务器将Ethernet Frame发送到左侧交换机
+
+◆    左侧交换机本地没有目的MAC对应的转发信息，因此Ethernet Frame发送到了左侧交换机的VLAN Trunk port
+
+◆    由于这是来自VLAN100的Ethernet Frame，交换机给Ethernet Frame打上VLAN 100的Tag，从自己的VLAN Trunk port发出，发送到右侧交换机的VLAN Trunk port
+
+◆    右侧的VLAN Trunk port收到VLAN 100的Ethernet Frame，去除VLAN Tag，再在本地的VLAN 100端口中查找MAC转发
+
+◆    找到对应的MAC/端口记录，最终Ethernet Frame发送到最右侧的服务器
+
+##### Linux Trunk Port
+
+Windows也支持Trunk port，与Linux类似，这里只说明Linux系统下的Trunk port。
+
+Linux系统可以通过内核模块8021q支持VLAN Trunk。这里有什么不一样？在一般情况下，主机是不感知VLAN Tag的，也就是说主机发送的网络数据都是不带VLAN Tag，所有VLAN Tag操作都是由交换机完成。但是实际上交换机也不知道自己连接的是什么，所以，如果在主机完成VLAN Tag的操作，再发送到交换机，交换机也能处理。基于这个前提，Linux能够将一块以太网卡配置成一个支持802.1q的Trunk port，使得这块网卡跟前面描述的交换机上的Trunk port一样，能够收发多个VLAN的网络数据包。并且通过配置Linux主机的子网卡，可以使得Linux主机内部完成VLAN Tag的操作（打上VLAN Tag，去除VLAN Tag）。有不止一种方法可以配置Linux VLAN Trunk，这里以ip命令为例，为eth0添加名为eth0.102的子网卡，其VLAN ID为102。
+
+```bash
+$ sudo ip link add link eth0 name eth0.102 type vlan id 102
+```
+
+就这么简单，之后可以看到一个新的网卡在系统的网卡列表中。Linux VLAN Trunk工作过程如下：
+
+◆    外界传入的带VLAN Tag 102的包，到达了eth0，VLAN Tag 102被去除，然后不带VLAN Tag的Ethernet Frame被重新发往操作系统网络栈，再发送到eth0.102。
+
+◆    从eth0.102发送出来的帧，被打上VLAN102的标签，再从eth0传出。
+
+
+
+应用层面，收发的还是不带VLAN Tag的数据，只是经过Linux VLAN Trunk的处理，进出主机的的数据是带VLAN Tag的数据。
+
+由于eth0配置成了VLAN Trunk port。为了让带有VLAN标签的Ethernet Frame能够在网络上传输。eth0所接入的网络必须是一个Trunk network。否则无法传输任意带VLAN Tag的Ethernet Frame。也就是说，需要将主机的Trunk port连接到红框内。
 
 
 #### VLANID
@@ -296,6 +341,38 @@ PC1接在Port1，PC2接在Port5，因为这两个port都是untagged port，所�
 
 tagged port则不会将Tag移掉，会将封包交到正确的VLAN。
 
+
+
+### VLAN and IP Subnetwork：666
+
+通常，一个vlan对应一个Subnetwork~~~
+
+穷举一下，VLAN和IP子网，各种划分，会有4种情形
+
+1、A和B相同IP子网，相同VLAN：可以正常通讯，单播和广播通讯都会送达。
+
+2、A和B不同IP子网，相同VLAN：需要路由器才能单播通讯，但是会有广播跨IP子网互相干扰。
+
+3、A和B相同IP子网，不同VLAN：完全无法通讯，即使有路由器也不行。因为IP协议认为是发给近邻直连网络，数据不会路由给网关，会进行ARP请求广播，企图直接与目的主机通讯，可是由于B在另一个VLAN，网关不予转发ARP请求广播，B收不到ARP请求。结局是网络层ARP无法解析获得数据链路层需要的目的MAC，通讯失败。（除非：路由器上对两个VLAN之间进行桥接；或者路由器上进行静态NAT，若生成树设置不当容易把交换机搞死千万别作）
+
+> 不同vlan分配不同子网，方便路由管理，避免额外手工配置。
+
+4、A和B不同IP子网，不同VLAN：需要路由器才能进行单播通讯，不会有广播跨子网干扰。
+
+
+
+情形1是常见的小型局域网；
+
+情形2不应出现在正确配置的网络里，因为花了钱买路由器（三层交换机）但是钱白花了，没能隔离广播风暴；
+
+情形3是常见的家庭WiFi路由器配置故障，一些运营商进户线路经过NAT是192.168.1.0/24的地址段，家用WiFi路由器恰好也用192.168.1.0/24这个地址段作为Lan口默认地址，路由器Lan端和WAN端冲突，傻掉了（可以这样理解：家用路由器的Lan端和WAN端分别处于两个不同的VLAN）；
+
+情形4是常见的企业局域网。
+
+三层交换机用在什么地方？三层交换机最主要最擅长的应用就是进行VLAN之间的数据路由转发，这种应用场合下它的转发速度要远胜过专业路由器，它可以做到以二层帧交换的速度进行跨VLAN三层路由转发作业。但是通常来说它NAT效率不如专业路由器或防火墙，不能跨二层协议处理数据包，通常把它用在局域网网络核心节点。在局域网网络末节，比如说Internet接入处，通常都会再专设一台路由器或防火墙来进行链路层协议转换和NAT转换。可以这么简单的理解，三层交换机是一种只有以太网接口，只能处理以太网协议的路由器。（难道除了以太网还有别的？当然有，比如串行、PPP）虽然三层交换机和路由器在内部运作机制上不一样，对于用户而言，数据路由转发这个功能它俩都具备。
+
+
+
 ### VLAN的不足
 
 #### VLAN 数量
@@ -444,34 +521,6 @@ TOR（Top Of Rack）交换机的MAC表大小限制。
 
 
 
-### VLAN and IP Subnetwork：666
-
-穷举一下，VLAN和IP子网，各种划分，会有4种情形
-
-1、A和B相同IP子网，相同VLAN：可以正常通讯，单播和广播通讯都会送达。
-
-2、A和B不同IP子网，相同VLAN：需要路由器才能单播通讯，但是会有广播跨IP子网互相干扰。
-
-3、A和B相同IP子网，不同VLAN：完全无法通讯，即使有路由器也不行。因为IP协议认为是发给近邻直连网络，数据不会路由给网关，会进行ARP请求广播，企图直接与目的主机通讯，可是由于B在另一个VLAN，网关不予转发ARP请求广播，B收不到ARP请求。结局是网络层ARP无法解析获得数据链路层需要的目的MAC，通讯失败。（除非：路由器上对两个VLAN之间进行桥接；或者路由器上进行静态NAT，若生成树设置不当容易把交换机搞死千万别作）
-
-> 不同vlan分配不同子网，方便路由管理，避免额外手工配置。
-
-4、A和B不同IP子网，不同VLAN：需要路由器才能进行单播通讯，不会有广播跨子网干扰。
-
-
-
-情形1是常见的小型局域网；
-
-情形2不应出现在正确配置的网络里，因为花了钱买路由器（三层交换机）但是钱白花了，没能隔离广播风暴；
-
-情形3是常见的家庭WiFi路由器配置故障，一些运营商进户线路经过NAT是192.168.1.0/24的地址段，家用WiFi路由器恰好也用192.168.1.0/24这个地址段作为Lan口默认地址，路由器Lan端和WAN端冲突，傻掉了（可以这样理解：家用路由器的Lan端和WAN端分别处于两个不同的VLAN）；
-
-情形4是常见的企业局域网。
-
-三层交换机用在什么地方？三层交换机最主要最擅长的应用就是进行VLAN之间的数据路由转发，这种应用场合下它的转发速度要远胜过专业路由器，它可以做到以二层帧交换的速度进行跨VLAN三层路由转发作业。但是通常来说它NAT效率不如专业路由器或防火墙，不能跨二层协议处理数据包，通常把它用在局域网网络核心节点。在局域网网络末节，比如说Internet接入处，通常都会再专设一台路由器或防火墙来进行链路层协议转换和NAT转换。可以这么简单的理解，三层交换机是一种只有以太网接口，只能处理以太网协议的路由器。（难道除了以太网还有别的？当然有，比如串行、PPP）虽然三层交换机和路由器在内部运作机制上不一样，对于用户而言，数据路由转发这个功能它俩都具备。
-
-
-
 ### Do VLANs require different subnet？: 有意思
 
 https://community.spiceworks.com/topic/1116440-do-vlans-require-different-subnets
@@ -527,4 +576,5 @@ https://www.1024sou.com/article/60783.html
 3. https://blog.51cto.com/centaurs1987/1437083
 3. https://www.1024sou.com/article/60783.html
 3. https://blog.csdn.net/bunny_nini/article/details/104545978
+3. https://blog.51cto.com/u_15127681/2818076
 

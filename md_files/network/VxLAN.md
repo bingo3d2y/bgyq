@@ -1,5 +1,9 @@
 ## VxLAN
 
+在underlay环境下不同网络的设备需要连接至不同的交换机下，如果要改变设备所属的网络，则要调整设备的连线。引入vlan后，调整设备所属网络只需要将设备加入目标vlan下，避免了设备的连线调整。
+
+vxlan使得网络变更更加灵活了。
+
 ### What is VxLAN
 
 VXLAN（Virtual eXtensible Local Area Network，虚拟扩展局域网），是由IETF定义的NVO3（Network Virtualization over Layer 3）标准技术之一，采用L2 over L4（MAC-in-UDP）的报文封装模式，将二层报文用三层协议进行封装，可实现二层网络在三层范围内进行扩展，同时满足数据中心大二层虚拟迁移和多租户的需求。
@@ -46,6 +50,8 @@ VXLAN网络保证虚拟机动态迁移：采用“MAC in UDP”的封装方式�
 
 在Overlay方案中，物理网络的东西向流量类型逐渐由二层向三层转变，通过增加封装，将网络拓扑由物理二层变为逻辑二层，同时提供了逻辑二层的划分管理，更好地满足了多租户的需求。
 
+云计算场景下，传统服务器变成一个个运行在宿主机上的vm。vm是运行在宿主机的内存中，所以可以在不中断的情况下从宿主机A迁移到宿主机B，前提是迁移前后vm的ip和mac地址不能发生变化，这就要求vm处在一个二层网络。**毕竟在三层环境下，不同vlan要使用不同的ip段，否则路由器就犯难了**。
+
 #### MAC表
 
 数据中心的虚拟化给网络设备带来的最直接影响就是：之前TOR（Top Of Rack）交换机的一个端口连接一个物理主机对应一个MAC地址，但现在交换机的一个端口虽然还是连接一个物理主机但是可能进而连接几十个甚至上百个虚拟机和相应数量的MAC地址。传统交换机是根据MAC地址表实现二层转发。
@@ -78,7 +84,139 @@ https://lk668.github.io/2020/12/13/2020-12-13-ECMP/
 
 
 
+### VxLAN 应用： Openstack，通透
 
+Openstack的租户网络使用VxLAN，可以提供1600w，满足各种需求，主机层面仍使用vlan即可，因为一个host上不可能跑4000个虚拟机。
+
+####  VNI 和 VID 转换: vxlan的意义
+
+在openstack中，尽管br-tun上的vni数量增多，但br-int上的网络类型只能是vlan，所有vm都有一个内外vid（vni）转换的过程，将用户层的vni转换为本地层的vid。
+尽管br-tun上vni的数量为16777216个，但br-int上vid只有4096个，那引入vxlan是否有意义？
+
+答案是肯定的，以目前的物理机计算能力来说，假设每个vm属于不同的tenant，1台物理机上也不可能运行4094个vm，所以这么映射是有意义的。
+
+**一个host上的vm可能属于不同的vlans. openstack 同一个vxlan下可能对应不同了vlans.**
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/openstack-vxlan-vlan.png)
+
+
+
+有的vm属于同一个tenant，即在用户层vni一致（同一个vxlan），但在本地层，同一tenant由nova-compute分配的vid可以不一致，同一宿主机上同一tenant的相同subnet(相同VLAN)之间的vm相互访问不需要经过内外vid（vni）转换，不同宿主机上相同tenant的vm之间相互访问则需要经过vid（vni）转换。**如果所有宿主机上vid和vni对应关系一致，整个云环境最多只能有4094个tenant，引入vxlan才真的没有意义。**
+
+#### br-tun：6
+
+Neutron如何做VID的转换：
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/openstack-br-tun.jpg)
+
+把br-tun一分为二，设想为两部分：
+
+* 上层是VTEP，对VXLAN隧道进行了终结；
+
+* 下层是一个普通的VLAN Bridge。
+
+所以，对于Host来说，它有两重网络，如图所示，虚线以上是VXLAN网络，虚线以下是VLAN网络。如此一来，VXLAN内外VID的转换则变成了不得不做的工作，因为它不仅仅是表面上看起的那样，仅仅是VID数值的转变，而且背后还蕴含着网络类型的转变。
+
+**VLAN类型的网络并不存在VXLAN这样的问题**。当Host遇到VLAN时，它并不会变成两重网络，可为什么也要做内外VID的转换呢？这主要是为了避免内部VLAN ID的冲突。内部VLAN ID是体现在br-int上的，而每一个Host内装有一个br-int，也就是说VLAN和VXLAN是共用一个br-int。假设VLAN网络不做内外VID的转换，则很可能引发br-int上的内部VLAN ID冲突。
+
+如下图所示，Openstack 有两个类型的租户网络一个是VLAN类型，一个是VXLAN类型的网络，但是host上都只有由br-int提供的VLAN类型网络，所以必然发生VID转化。当不由Neutron同一管理时，可能发生冲突。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/openstack-vlan-and-vxlan.png)
+
+VXLAN做内外VID转换时，并不知道VLAN的外部VID是什么，所以它就根据自己的算法将内部VID转换为100，结果很不幸中枪，与VLAN网络的外部VID相等。**因为VLAN的内部VID没有做转换，仍然是等于外部VID**，所以两者的内部VID在br-int上产生了冲突。正是这个原因，所以VLAN类型的网络，也要做内外VID的转换，而且是所有网络类型都需要做内外VID的转换。这样的话Neutron就能统一掌控，从而避免内部VID的冲突。
+
+##### why need turn VID？
+
+原因1： 满足租户自定义网络需求
+
+vlan 网络也得转换，因为要对租户提供可自定义的VLAN网络，如果租户想创建自定义创建VLAN ID为`111`的网络，他提交了申请单，但是Openstack集群创建的时候VLAN网络模式没有预留`VLAN 111`，怎么办，这不是没有办法满足客户自定义的要求了吗？
+
+这时，就需要VID 的转换了。管理员可以根据租户申请单，给租户创建`VLAN 111`网络，将这个`VLAN 111`映射到Openstack集群预留的`VLAN 217`，即可满足租户自定义网络的需求。
+
+原因2： 避免VxLAN转换VLAN ID时冲突
+
+假如`VxLAN VNI 1000`在br-tun时，转换时转换成了`VLAN 100`，这时候不巧的是underlay网络正好有`Vlan 100`这时候数据包怎么传输？？？？
+
+
+
+
+
+
+
+#### VTEP Trunk网络规划
+
+公有云架构中，vtep角色通过宿主机上的ovs实现，宿主机上联至接入交换机的接口类型为trunk，在物理网络中为vtep专门规划出一个网络平面。
+
+vm在经过vtep时，通过流表规则，去除vid，添加上vni.
+
+交换机Trunk互联，VLAN Trunk是一种网络设备间的point-to-point的连接。一条VLAN Trunk线路可以同时传输多个甚至所有的VLAN数据。
+
+```bash
+[SW1] interface gigabitEthernet0/0/24
+[SW1-GigabitEthernet0/0/24] port link-type trunk
+[SW1-GigabitEthernet0/0/24] port trunk allow-pass vlan 10 20
+```
+
+通过VLAN Trunk port，两个交换机之间不论需要连接多少个VLAN，只需要一个VLAN Trunk连接（一对Trunk port）即可。
+
+如果有多个交换机需要连接，通常会用另外一个交换机连接它们，如下图所示，交换机之间都通过Trunk port相连。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/swtich-trunk.jpeg)
+
+有两个交换机，各有两个VLAN，为了让VLAN能正常工作，将VLAN1和VLAN2分别连接起来。如果是两个交换机，两个VLAN还好，如果是100个VLAN，那么这里需要有100条线路，200个交换机端口。这么连接可以吗？可以，只要有钱，因为这里的线路和交换机端口都是钱。这种方法，运维和成本支出比较大，不实用。
+
+#### VxLAN隧道建立
+
+##### 子接口模式
+
+```bash
+#  if-1.1
+interface 10GE1/0/1.1 mode l2   //创建二层子接口10GE1/0/1.1   
+encapsulation dot1q vid 10   //只允许携带VLAN Tag 10的报文进入VXLAN隧道   
+bridge-domain 10   //报文进入的是BD 10  
+
+#  if-1.2
+interface 10GE1/0/1.2 mode  l2   //创建二层子接口10GE1/0/1.2   
+encapsulation untag   //只允许不携带VLAN Tag的报文进入VXLAN隧道  
+bridge-domain 20   //报文进入的是BD 20  
+
+```
+
+设置好子接口后，通过协议自动建立vxlan隧道隧道，或者手动指定vxlan隧道的源和目的ip地址在本端vtep和对端vtep之间建立静态vxlan隧道。对于华为CE系列交换机，以上配置是在nve（network virtualization Edge）接口下完成的。配置过程如下
+
+```bash
+interface Nve1   //创建逻辑接口  
+NVE 1 source 1.1.1.1   //配置源VTEP的IP地址（推荐使用Loopback接口的IP地址）   
+vni 5000 head-end peer-list 2.2.2.2    
+vni 5000 head-end peer-list 2.2.2.3 
+```
+
+其中，vni 5000的对端vtep有两个，ip地址分别为2.2.2.2和2.2.2.3，至此，vxlan隧道建立完成。
+VXLAN隧道两端二层子接口的配置并不一定是完全对等的
+
+
+
+##### vlan模式
+
+当有众多个vni的时候，需要为每一个vni创建一个子接口，会变得非常麻烦。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/sub-if-vxlan.png)
+
+
+
+此时就应该采用vlan接入vxlan隧道的方法。vlan接入vxlan隧道只需要在物理接口下允许携带这些vlan的报文通过，然后再将vlan与bd绑定，建立bd与vni对应的bd信息，最后创建vxlan隧道即可。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vlan-vxlan.png)
+
+vlan与bd绑定配置如下：
+
+```bash
+bridge-domain 10    //创建一个编号为10的bd 
+l2 binding vlan 10 //将bd10与vlan10绑定  
+vxlan vni 5000  //设置bd10对应的vni为5000   
+```
+
+end
 
 ### VxLAN
 #### VxLAN网络模型
@@ -477,10 +615,14 @@ Peer System name State Duration
 end
 
 ### 引用
+
+0. https://blog.csdn.net/weixin_33912453/article/details/92187910
+
 1. https://www.zhihu.com/question/51675361/answer/263300150
 2. http://www.3542xyz.com/?p=1331
 3.  https://www.cnblogs.com/mlgjb/p/8087612.html
 3.  https://www.jianshu.com/p/cccfb481d548
 3.  https://blog.51cto.com/u_11555417/2364533
 3.  https://lk668.github.io/2020/12/13/2020-12-13-ECMP/
+3.  https://bbs.huaweicloud.com/blogs/110072
 
