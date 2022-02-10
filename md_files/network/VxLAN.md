@@ -218,7 +218,7 @@ vxlan vni 5000  //设置bd10对应的vni为5000
 
 end
 
-### VxLAN
+### VxLAN: base
 #### VxLAN网络模型
 
 VXLAN 网络架构的组件有：

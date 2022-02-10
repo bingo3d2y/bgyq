@@ -2,4 +2,169 @@
 
 1. 路由器协议
 2. 组网
-3. 
+3. end
+
+### DCI
+
+数据中心互联（DCI）是一种实现多个数据中心之间互联互通的网络解决方案。
+
+### IGP
+
+内部网关协议(IGP：Interior GatewayProtocol)，适用于单个ISP的统一路由协议的运行，一般由一个ISP运营的网络位于一个AS(自治系统)内，有统一的ASnumber(自治系统号)，用来处理内部路由。
+
+**OSPF比RIP强大的地方是，OSPF对整网的拓扑结构了如指掌，一旦某一条路径断了，可以及时选择备份链路，对通信的影响小。**
+
+作为目前主流的IGP协议，OSPF主要是为了解决RIP的三大问题而出现的，比如：收敛很慢、容易产生路由环路以及可延展性差等。
+
+#### OSPF
+
+https://www.cfdzsw.com/2021/06/23/%E7%B2%BE%EF%BC%81%E4%B8%87%E5%AD%9715%E5%9B%BE%E8%AF%A6%E8%A7%A3ospf%E8%B7%AF%E7%94%B1%E5%8D%8F%E8%AE%AE/
+
+
+
+### EGP
+
+EGP是相对于IGP来说的话，那么EGP实际上有两种：一种是BGP，另一种是EGP（没错，重名而已）。
+
+AS之间交换路由信息的路由协议称为外部路由协议（缩写是EGP），最早的时候因为只有一种协议，所以被命名为EGP。
+
+### BGP
+
+IGP发现中，从RIP到后来的EIGRP，OPPF，ISIS，协议发展迅速。但是总体来讲，IGP认为同一个AS之间的路由器是可以相关信息的，所以，IPG的自动发现和路由计算大多使用完全开放状态，人工干预较少。
+
+不通AS互联的需求推动产生了EGP（外部网关协议），EGP的主要目的是在不同的AS之间传递路由。最早的EGP只有单纯的发布网络可达信息，不做路由优选和环路保护设计等缺陷，很快就被BGP取代了。
+
+所以，BGP的产生，根源上是为了解决不同区域之间的路由传递问题。
+
+
+
+#### 防环
+
+https://wangshichao.com/f5f977db/
+
+AS_Path属性按矢量顺序记录了某条路由从本地到目的地址所要经过的所有AS编号。在接收路由时，设备如果发现AS_Path列表中有本AS号，则不接收该路由，**AS_Path属性解决了EBGP环路问题**
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/AS_PATH防环.png)
+
+如图，假设RTC从右边AS100收到一条路由信息，记录为99.0.3.0/22（100，65530，65101），发现自己的AS号在里面，则丢弃。
+
+#### 黑洞
+
+
+
+#### iBGP 替代 IGP
+
+先说结论，iBGP不能替代IGP，但是eBGP可以，并且已经有一个非常有说服力的实践案例——阿里云。
+
+路由协议的选择是一个工程问题，协议本身的设计和特性则是一个历史问题，没有绝对的谁行或者谁不行，并且也不能因为C厂可劲收割用户智商税就说这个东西成本太高不合适。
+
+工程问题就是说，脱离实际的需求和工程谈协议对比和优劣都是扯淡。
+
+我虽然吹了一波全eBGP，但是到了自己的生产网的环网骨干上，老老实实的用起来了IGP+iBGP的MPLS VPN方案，除了多租户/流量工程/SR这些考虑之外，也想要从基础路由的路径规划中解脱出来——现在基础路由我只需要规划IGP Metric值就可以了。
+
+我们先来看一下题主的问题——
+
+> 既然我们已经有了IBGP用于AS内部路由，那么OSPF与RIP这些内部路由IGP为啥还要支持呢？通用BGP岂不是最方便省事？
+
+我们也可以完全不使用iBGP于AS内部路由，你完全可以设计IGP和BGP之间的路由重分发，并且这很常见。（笑......
+
+
+
+题主的这个问题是许多网络初学者都会犯的一个误区，那就是**忽略了路由协议的“历史性”。**路由协议不是一夜之间冒出来的，仅BGP本身的RFC都更新了三个版本，这里引用下我自己的文章——
+
+> 最老的RFC是RFC1654，后被RFC1771废弃，再后来是RFC4271，发布于2006年，所以今天我们看BGP的RFC，直接奔着RFC4271去就可以了。
+
+我就不提BGP前身还有个EGP了吧……所以题主首先要明白，你今天看到的BGP的样子是发展了二十多年后的样子，而不是一开始的样子。
+
+阿拉伯网工对于iBGP提到了这样一点——
+
+> iBGP有个天生的短板是eBGP用到的AS-PATH防环机制对它无效，只能用传一跳的方式来防环，导致iBGP路由器之间必须是full mesh的逻辑拓扑，或者使用RR，扩展性不如IGP。
+
+首先无法同意的是，这不是一个“短板”，你只能说它就是这么设计的，如果说这是个短板，那么在广域互连场景上，IGP简直浑身都是短板一无是处了，然而实际上，SP的网络中也会使用IGP来搭建一个骨架——传loopback路由。其次无法同意的是，都提到RR了，还说扩展性不如IGP，RR这个冤啊，
+
+BGP是一个典型的分布式系统，所以它依赖各种路径属性来防止环路，控制选路，其中AS-PATH这个属性，让BGP即使不使用泛洪机制，也能知道收到的路由经过了哪些AS。精妙的属性构建起来的分布式系统，让BGP有能力支撑一个非常庞大的网络——我无法想象在整个Internet范围上去跑个泛洪型的协议会发生什么事情。
+
+所以当我们将BGP用在一个AS内部的时候（在同一个AS内部的IBGP，AS-PATH是一样，无法通过AS-PATH防环），因为没有AS-PATH了，防环就没了，又没有泛洪型的路径学习，只好引入单跳限制了。其实如果你认真研究引入RR后BGP所额外使用的那些路径属性就会发现，它就是一种水平分割的实现——收到的更新包含自己的`ORIGINATOR_ID`时就丢弃嘛。
+
+那么怎么才能在内部使用到AS-PATH属性呢——打破常规思路，用eBGP不就好了，不就传个路由嘛。在数据中心内部，有着严格的拓扑层次设计，使用eBGP作为整网唯一的路由协议，在路由协议层面，简化了网络构建的复杂性。
+
+所以我一开始才说，这是个工程问题，你不能脱离实际情况来讨论。比如同样是数据中心，为什么我们使用的就是iBGP & RR呢？因为我们跑了VXLAN/EVPN，Cisco就是这么实现的。
+
+关于数据中心内部使用eBGP的案例，至少阿里公开写书说自己是这么干的，国内国外能跟阿里有同样网络规模的，十个指头可以数过来吧？
+
+所以答主想的是没错的，国内最厉害的网工也是这么想的，全用BGP肯定更省事。我自己的网络里也是iBGP+eBGP混合，那些跑不动BGP的设备逐渐都被淘汰掉了。
+
+当然由于我们使用的是VXLAN/EVPN，没有阿里的魄力，所以仍要使用IGP去传loopback路由，从这个角度来说，确实无法完全抛弃IGP。但也仅此而已，IGP沦为了给BGP打工的。
+
+------
+
+我们再来看一下阿拉伯网工的其它说法，不是为了对线啊，只是我觉得说的不妥——
+
+> iBGP不像IGP具有自动发现邻居以及和peer自动建立邻居关系的能力。
+
+完全的自动发现iBGP做不到，但是`listen range`也可以让你的网络实现基本自动化上线，不是什么大问题。 
+
+IGP的自动发现和自动建立邻居既是优势也是缺陷，在设计不当的时候，或者在本就应该控制邻居建立的情况下使用了IGP，反而会带来额外的麻烦。
+
+一个生产上的例子是，在一个共享介质的多路访问网络里，一堆路由器A要相互建立邻居，一堆路由器B要相互建立邻居，堆A和堆B不要建立邻居，你咋办……？两个骚操作——
+
+- password配置不一样
+- 单播指neighbor
+
+都不是好办法。
+
+自动发现邻居和自动建立邻居关系只是一个特定场景的需求，BGP作为一个域间路由协议，其最初被设计出来的时候就没有这个需求，后来有这个需求后，就有了`listen range`的功能。
+
+`listen range`大概是这么配的——
+
+```text
+router bgp 65100
+ bgp listen range 10.1.0.0/24 peer-group TEST
+```
+
+> 默认状态下iBGP的收敛速度不如IGP， 比如OSPF的hello timer和dead timer分别是10秒和40秒，BGP则是60秒和180秒。快速收敛本来就不是BGP设计之初的目的**（这也是iBGP和IGP相比最大的短板）**，如果你手动把BGP的hello和dead timer调低，比如分别改成5秒和15秒，思科的路由器还会提示你这么做会导致peer flapping发生概率升高的问题：
+
+hello timer和dead timer跟收敛有什么关系？邻居建立了BGP就马上收敛了吗？hello timer和dead timer只是和BGP邻居本身出现问题时的收敛有关，这个对于IGP来说也是一样的，设成多少完全取决于你的链路质量，至于flapping的问题，如果你的链路已经flapping到了BGP邻居在反复震荡了，你这链路真的还能用吗？这已经不是一个BGP可以解决的问题了，先去解决链路质量问题吧。
+
+要在邻居出现问题时快速收敛，还有比调timer更快的方案——BFD，由BFD引起的抖动，比调低timer严重多了，在我们使用的一些虚拟二层专线上，个别线路上因为存在难以被观察到的丢包引起了BFD抖动，进而引起了BGP的震荡，我们在这些链路上关掉了BFD，但是即便BFD无法工作了，调低timer仍然是有效的。
+
+不是说我调了timer它就一定会震荡，不一定的，古时候广域网链路窄的很，当然我们不会喜欢BGP老是去发hello，但是现在广域网链路随随便便上百M，Keepalive那点儿数据包，说难听的，够干啥的啊？
+
+(要素插入)
+
+BGP其实有非常多的收敛优化功能，比如这个——
+
+这都2020年了，别担心什么CPU扛不住之类的问题了，去看看ISR4K路由器跑IWAN时的扩展性，4451作HUB路由器，全功能IWAN，带个几百个Site都是洒洒水啦，ASR1K直接1000个Site起步，全功能什么概念？BGP算个啥？NHRP/IPSec/NBAR/PFR/NETFLOW哪个不消耗CPU？
+
+> \6. iBGP的同步（Synchronization）机制注定了它和IGP有缘，在不使用IGP的时候，你如果不关掉Synchronization的话，iBGP表中的前缀根本不能进入路由表，反观IGP就没有类似这样的顾虑。
+
+现在默认关，此题结束。
+
+> \5. 在选路规则方面，IGP通常只有一个metric，比如OSPF和ISIS看链路开销，RIP看跳数，EIGRP有一套通过链路带宽和延时计算metric的公式（我承认也很复杂，但是还是比不上BGP），而BGP选路规则比IGP复杂很多（但从某个角度来说这也是它的优势，更方便我们手动做TE）。
+
+不是从某个角度来说，而是这本来就是优势。我们不能因为一个东西“挺复杂的”就说这是劣势，BGP的选路原则和路径属性设计非常精妙，这套东西不管怎么比都会是个优势，而不是劣势。
+
+只要肯下点功夫理解透了，其实十三条选路原则很少会比到后面几条去，以我的工程经验来看，最多比到IGP度量去，如果要施加路由策略，那就比到AS-PATH或者MED就差不多出结果了。
+
+这可能是路由上最有价值去钻研的东西了，在任何情况下都没理由说它是劣势。
+
+> \7. 预算和成本考虑，低端、便宜的路由器都能支持一些IGP，但不一定支持BGP，小微企业没必要花那个冤枉钱去买更贵的支持BGP的路由器。
+
+在2020年，我们建议小微企业全面上云，解雇网工。
+
+不好意思，又皮了。
+
+
+
+iBGP requires a full mesh or use of mitigation like confederations or route reflectors, BGP doesn't converge with anything like the speed of OSPF, etc.
+
+Each OSPF router would have a full understanding of all the routes that are in the area in which it resides without needing a full mesh, and it converges very, very quickly.
+
+Using an IGP is recommended with iBGP. Without the IGP, iBGP must neighbor on external-facing interfaces, with an IGP, iBGP can neighbor on loopback interfaces which never go down, and can have multiple paths to reach.
+
+I have seen iBGP-only for local routing, but it is more difficult and fragile.
+
+### 引用
+
+1. https://www.zhihu.com/question/411029743/answer/1516720777
+2. end
