@@ -20,7 +20,34 @@
 
 https://www.cfdzsw.com/2021/06/23/%E7%B2%BE%EF%BC%81%E4%B8%87%E5%AD%9715%E5%9B%BE%E8%AF%A6%E8%A7%A3ospf%E8%B7%AF%E7%94%B1%E5%8D%8F%E8%AE%AE/
 
+开放式最短路径优先（英语：Open Shortest Path First，缩写为 OSPF）是一种基于IP协议的路由协议。
 
+它是大中型网络上使用较为广泛的IGP协议。OSPF是对链路状态路由协议的一种实现，运作于自治系统内部
+
+##### OSPF工作原理
+
+在OSPF网络中，每一台运行OSPF协议的网络设备都会根据自己周围网络拓扑生成链路状态通告LSA（Link State Advertisement），并通过更新报文将LSA发送给网络中的其它设备。
+
+LSA更新完成后，每台设备都会生成自己的LSDB（Link State DataBase）。
+
+LSA是对路由器周围网络拓扑结构的描述，LSDB则是对整个自治系统的网络拓扑结构的描述。
+
+路由器将LSDB转换成一张带权的有向图，这张图便是对整个网络拓扑结构的真实反映。在网络拓扑稳定的情况下，各个路由器得到的有向图是完全相同的。
+
+路由器根据最短路径优先(Shortest Path First)算法计算到达目的网络的路径，而不是根据路由通告来获取路由信息。
+
+每台路由器根据有向图，使用SPF算法计算出一棵以自己为根的最短路径树，这棵树给出了到自治系统中各节点的路由。相对于RIP，这种机制极大地提升了路由器的自主选路能力，使得路由器不再依靠路由通告进行选路。
+
+> 我们需要注意的是，运行OSPF的设备交互的不是路由表，而是带有链路状态。路由信息是每台设备根据自己的LSDB计算出来的。设备自主选路
+> SPF算法只会算出最短的路径，也就决定了他无法想EIGRP那样，实现不等价路由负载均衡。
+
+根据上面描述的工作原理，OSPF运行机制大概可以分为如下几步
+
+1. 通过交互Hello报文形成邻居关系
+2. 通过泛洪LSA通告链路状态信息
+3. 通过组建LSDB形成带权有向图
+4. 通过SPF算法计算并形成路由
+5. 维护和更新路由表
 
 ### EGP
 
@@ -32,13 +59,13 @@ AS之间交换路由信息的路由协议称为外部路由协议（缩写是EGP
 
 IGP发现中，从RIP到后来的EIGRP，OPPF，ISIS，协议发展迅速。但是总体来讲，IGP认为同一个AS之间的路由器是可以相关信息的，所以，IPG的自动发现和路由计算大多使用完全开放状态，人工干预较少。
 
-不通AS互联的需求推动产生了EGP（外部网关协议），EGP的主要目的是在不同的AS之间传递路由。最早的EGP只有单纯的发布网络可达信息，不做路由优选和环路保护设计等缺陷，很快就被BGP取代了。
+不同的AS互联的需求推动产生了EGP（外部网关协议），EGP的主要目的是在不同的AS之间传递路由。最早的EGP只有单纯的发布网络可达信息，不做路由优选和环路保护设计等缺陷，很快就被BGP取代了。
 
 所以，BGP的产生，根源上是为了解决不同区域之间的路由传递问题。
 
 
 
-#### 防环
+#### BGP防环
 
 https://wangshichao.com/f5f977db/
 
@@ -164,7 +191,29 @@ Using an IGP is recommended with iBGP. Without the IGP, iBGP must neighbor on ex
 
 I have seen iBGP-only for local routing, but it is more difficult and fragile.
 
+
+
+### VRF
+
+Virtual Routing Forwarding
+
+Tips: Virtualization is VRF in the router, VLAN in the switch, trunk (dot1q tagging) on the Ethernet link, context or VDOM on the firewall and VM on the server.
+
+> 虚拟化 是 VRF之于路由器， VLAN之于交换机，trunk之于以太网连接，VDOM之于防火墙，VM之于服务器 
+
+VRF将一个路由器分隔成两个，使其用于独立的路由表，类似VLAN隔离广播域。
+
+场景如下，可以补个图：
+
+假设PC1与R2这一侧的网络属于一个独立的业务；PC2与R3这一侧的网络属于另一个独立的业务，由于设备资源有限或者其他方面的原因，这两个独立的业务的相关节点连接在R1上，也就是同一台设备上。那么在完成相关配置后，R1的路由表如上图所示。
+现在如果PC1要发一个数据包到2.2.2.2，那么这个数据包在到达R1后，R1就会去查看自己的路由表，发现有一条2.2.2.0/24的路由匹配，因此将这个IP包从GE0/0/2口转发给192.168.100.2。这是没有问题的，然而如果PC1要访问3.3.3.0/24网络呢？也是无压力的，因为数据包到达R1后，她照样查找路由表结果发现有匹配的路由，因此将数据包转给R3。但是实际上，从业务的角度考虑，我们禁止PC1访问3.3.3.0/24网络。
+
+VRF1及VRF2有了自己的接口，也有了自己的路由表。并且相互之间是隔离的。
+
+
+
 ### 引用
 
 1. https://www.zhihu.com/question/411029743/answer/1516720777
-2. end
+2. https://wangshichao.com/6590a70/
+3. end
