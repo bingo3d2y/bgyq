@@ -565,6 +565,64 @@ Let's say I have four PCs connected to one CISCO switch.
 Can PC1 ping PC2?
 Can PC3 ping PC4?
 
+### Openstack + VLAN：mark
+
+VLAN网络依赖三层交换机VLAN技术，物理主机的管理流量与虚拟机的业务流量使用不同物理网口，并分处不同网络。 因此物理主机需要有两个网口，物理主机管理流量使用第一个网口，虚拟机业务流量使用第二个网口。
+
+> 这里简化了，其实是需要三个网卡的，因为还有存储网络。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/openstack-vlan.png)
+
+三层交换机需要进行VLAN划分，IP配置及上行链路（物理主机网口接入交换机的端口）放行操作。其中，
+
+#### 管理网口
+
+物理主机管理网口接入交换机的端口链路类型可以使用access，或者hybrid类型。
+配置示例：
+假设项目规划物理主机管理流量使用VLAN 10，其网络IP规划为192.168.10.0/24，物理主机业务网口连接在交换机GigabitEthernet0/0/1端口上。则交换机（华为）配置如下：
+
+```bash
+interface Vlanif10
+ 	  ip address 192.168.10.254 255.255.255.0
+
+	interface GigabitEthernet0/0/1
+ 	  port link-type hybrid          # 端口链路类型为hybrid
+      port hybrid pvid vlan 10      # 设置默认vlan 10
+###	或者
+	interface GigabitEthernet0/0/1
+ 	  port link-type access        # 端口链路类型为access
+      port default vlan 10          # 设置默认vlan 10
+
+
+```
+
+##### 业务网口-1
+
+物理主机业务网口接入交换机的端口链路类型可以使用hybrid，或者trunk类型。
+配置示例：
+假设项目规划虚拟机业务流量使用VLAN 100，其网络IP规划为192.168.100.0/24，物理主机业务网口连接在交换机GigabitEthernet0/0/3端口上。则交换机（华为）配置如下：
+
+```bash
+interface Vlanif100
+ 	  ip address 192.168.100.254 255.255.255.0
+
+	interface GigabitEthernet0/0/3
+ 	  port link-type hybrid     # 端口链路类型为hybrid
+      port hybrid tagged vlan 100 # 放行tagged vlan 100
+	### 或者
+	interface GigabitEthernet0/0/3
+ 	  port link-type trunk       端口链路类型为trunk
+      port trunk allow-pass vlan 100    # 放行tagged vlan 100
+
+
+```
+
+end
+
+##### 业务网口-N
+
+此处仅举例一个vlan配置情况，当业务网络规划多个vlan网络时，重复上述操作即可。此处配置需要牢记，管理网络信息在配置物理主机操作系统网卡时需要，业务网络信息在OpenStack搭建完成之后，创建虚拟机网络需要。
+
 ### OpenvSwitch（OVS）+VLAN组网
 
 https://www.1024sou.com/article/60783.html
@@ -577,4 +635,5 @@ https://www.1024sou.com/article/60783.html
 3. https://www.1024sou.com/article/60783.html
 3. https://blog.csdn.net/bunny_nini/article/details/104545978
 3. https://blog.51cto.com/u_15127681/2818076
+3. https://blog.csdn.net/luuJa_IQ/article/details/104134312
 

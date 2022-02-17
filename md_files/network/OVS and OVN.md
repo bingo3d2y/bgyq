@@ -6,11 +6,34 @@ OVS 只是一个单机软件，它并没有集群的信息，自己无法了解�
 
 
 
-### OVS：Docker
+### OVS：as Docker
 
 OVS可以说是网络虚拟化里最重要的工业级开源产品，OVS模仿物理交换机设备的工作流程，实现了很多物理交换机当时才支持的许多网络功能。
 
 vSwitch负责连接vNIC与物理网卡，同时也桥接同一物理服务器内的各个VM的vNIC。
+
+ovs-vswitchd - Open vSwitch daemon
+
+A daemon that manages and controls any number of Open vSwitch switches on the local machine.
+
+ovs-vswitchd switches may be configured with any of the following features:
+
+•      L2 switching with MAC learning.
+
+•      NIC bonding with automatic fail-over and source MAC-based
+       TX load balancing ("SLB").
+
+•      802.1Q VLAN support.
+
+•      Port mirroring, with optional VLAN tagging.
+
+•      NetFlow v5 flow logging.
+
+•      sFlow(R) monitoring.
+
+•      Connectivity to an external OpenFlow controller, such as NOX.
+
+
 
 #### neutron-openvswitch-agent：ML2 plugin
 
@@ -409,7 +432,7 @@ DPDK加速的OVS与原始OVS的区别在于，从OVS连接的某个网络端口�
 
 
 
-### OVN：k8s
+### OVN：as k8s
 
 [OVN (Open Virtual Network)](http://openvswitch.org/support/dist-docs/ovn-architecture.7.html) 是OVS提供的原生虚拟化网络方案，旨在解决传统SDN架构（比如Neutron DVR）的性能问题。
 
