@@ -8,6 +8,46 @@ Creating a Vlan means you are dividing up the BROADCAST DOMAINS.
 
 VLANs use software to emulate separate physical LANs. Each VLAN is thus a separate broadcast domain and a separate network.
 
+
+
+### 通透世界
+
+1. tag 和 untag 是针对 vlan ID，一个port 在 Trunk 或Hybird模式下，可以属于多个VLAN。所以，一个Port可以有N个 tag vlan 和 M个untag vlan。
+
+   > Access port 只能属于一个 VLAN
+
+2. PVID是根据 physical port来说的，一个物理端口只要一个PVID。且Access和Trunk、Hybird模式端口配置PVID命令不一致。
+
+3. 交换机如果互联用access模式，不同vlan配置同网段ip是能通讯的，因为Access 模式发送数据包时会去除tag标签。
+
+### VLAN and IP Subnetwork：666
+
+通常，一个vlan对应一个Subnetwork~~~
+
+穷举一下，VLAN和IP子网，各种划分，会有4种情形
+
+1、A和B相同IP子网，相同VLAN：可以正常通讯，单播和广播通讯都会送达。
+
+2、A和B不同IP子网，相同VLAN：需要路由器才能单播通讯，但是会有广播跨IP子网互相干扰。
+
+3、A和B相同IP子网，不同VLAN：完全无法通讯，即使有路由器也不行。因为IP协议认为是发给近邻直连网络，数据不会路由给网关，会进行ARP请求广播，企图直接与目的主机通讯，可是由于B在另一个VLAN，网关不予转发ARP请求广播，B收不到ARP请求。结局是网络层ARP无法解析获得数据链路层需要的目的MAC，通讯失败。（除非：路由器上对两个VLAN之间进行桥接；或者路由器上进行静态NAT，若生成树设置不当容易把交换机搞死千万别作）
+
+> 不同vlan分配不同子网，方便路由管理，避免额外手工配置。
+
+4、A和B不同IP子网，不同VLAN：需要路由器才能进行单播通讯，不会有广播跨子网干扰。
+
+
+
+情形1是常见的小型局域网；
+
+情形2不应出现在正确配置的网络里，因为花了钱买路由器（三层交换机）但是钱白花了，没能隔离广播风暴；
+
+情形3是常见的家庭WiFi路由器配置故障，一些运营商进户线路经过NAT是192.168.1.0/24的地址段，家用WiFi路由器恰好也用192.168.1.0/24这个地址段作为Lan口默认地址，路由器Lan端和WAN端冲突，傻掉了（可以这样理解：家用路由器的Lan端和WAN端分别处于两个不同的VLAN）；
+
+情形4是常见的企业局域网。
+
+三层交换机用在什么地方？三层交换机最主要最擅长的应用就是进行VLAN之间的数据路由转发，这种应用场合下它的转发速度要远胜过专业路由器，它可以做到以二层帧交换的速度进行跨VLAN三层路由转发作业。但是通常来说它NAT效率不如专业路由器或防火墙，不能跨二层协议处理数据包，通常把它用在局域网网络核心节点。在局域网网络末节，比如说Internet接入处，通常都会再专设一台路由器或防火墙来进行链路层协议转换和NAT转换。可以这么简单的理解，三层交换机是一种只有以太网接口，只能处理以太网协议的路由器。（难道除了以太网还有别的？当然有，比如串行、PPP）虽然三层交换机和路由器在内部运作机制上不一样，对于用户而言，数据路由转发这个功能它俩都具备。
+
 ### VLAN 好处：666
 
 在underlay环境下不同网络的设备需要连接至不同的交换机下，如果要改变设备所属的网络，则要调整设备的连线。引入vlan后，调整设备所属网络只需要将设备加入目标vlan下，避免了设备的连线调整。
@@ -33,6 +73,175 @@ Canonical Format Indicator，长度为1比特，表示MAC地址是否是经典�
 * VID
 
 VLAN ID，长度为12比特，表示该帧所属的VLAN。在VRP中，可配置 的VLAN ID取值范围为0～4095，但是0和4095协议中规定为保留的VLAN ID，不能给用户使用。
+
+
+
+### 交换机不同类型端口数据流: mark，背诵全文
+
+交换机的端口有三种模式，分别是access，trunk，hybrid。（port link-type命令设置端口类型）
+
+配置：
+
+如果二层以太网接口直接与计算机连接，则该接口需要配置成Access接口或Hybrid接口。
+
+端口类型配置为Access后，该端口不支持命令**port trunk allow-pass vlan**。
+
+如果二层以太网接口与另一台交换机设备的接口连接，则该接口需要配置成Trunk接口或Hybrid接口。
+
+端口类型配置为Trunk后，该端口不支持命令**port default vlan**。
+
+Access端口只属于1个VLAN，所以它的缺省VLAN就是它所在的VLAN，不用设置;
+
+Hybrid端口和Trunk端口属于多个VLAN，所以需要设置缺省VLAN ID。
+
+缺省情况下，Hybrid端口和Trunk端口的缺省VLAN为VLAN 1
+
+#### Access
+
+执行命令**port default vlan** *vlan-id*，将端口加入到指定的VLAN中。
+
+> 因为一个access port 只能属于一个vlan，必须使用`port default vlan`命令。
+
+在交换机内部传输时会保留tag标签，所以在同一个交换机的不用vlan是不能互通的。
+
+发送数据包时会去除tag标签，所以交换机互联用access模式，不同vlan配置同网段ip是能通讯的
+
+1.access端口接收帧时：
+
+①如果接收的帧有vlan tag时，该帧的vlan ID和access端口的PVID相同时，将改帧送入交换机；该帧的vlan ID和access端口的PVID不同时，丢弃帧。
+
+②如果接收的帧没有vlan tag时，access端口会将该帧打上vlan tag，vlan ID即为本端口的PVID，送入交换机。
+
+2.access端口发送帧时：
+
+access端口只能发送vlan ID和端口PVID相同的帧，发送出去时会剥掉vlan tag。
+
+```bash
+[Huawei-GigabitEthernet0/0/3]port link-type access
+[Huawei-GigabitEthernet0/0/3]port default vlan 10
+
+```
+
+此时该端口为access端口，PVID为10。
+
+该端口只能发送vlan ID为10的帧，发送出来的帧没有vlan tag。
+
+该端口可以接收vlan ID为10的帧（如交换机传出的帧）；也可以接收没有vlan tag的帧（如PC传出的帧），此帧将打上vlan tag（vlan ID=10）传入交换机。
+
+end
+
+#### Trunk
+
+Trunk端口加入 VLAN：
+
+1. 执行命令**port trunk allow-pass vlan** { { *vlan-id1* [ **to** *vlan-id2* ] } &<1-10> | **all** }，将端口加入到指定的VLAN中。
+2. 执行命令**commit**，提交配置。
+
+设置PVID：
+
+**port trunk pvid vlan** *vlan-id*
+
+1.trunk端口接收帧时：
+
+①接收没有vlan tag的帧（untag帧），trunk端口将帧打上vlan tag，vlan ID和本端口的PVID相同，若该PVID在trunk端口的放行vlan中，送入交换机，若PVID不在trunk端口的放行vlan中，丢弃该帧。
+
+②接收有vlan tag的帧，若帧的vlan ID在trunk端口的放行vlan中，送入交换机，若vlan ID不在trunk端口的放行vlan中，丢弃该帧。
+
+2.trunk端口发送帧时：
+
+trunk端口只能发送放行vlan中的帧，若该帧的vlan ID和trunk的PVID相同，则剥掉vlan tag发送；若该帧的vlan ID和trunk的PVID不同，则保留原有vlan tag发送。
+
+即：
+
+vid和pvid不相等，直接原样发送
+vid和pvid相等，去除tag标签发送
+
+```bash
+[Huawei-GigabitEthernet0/0/4]port link-type trunk
+[Huawei-GigabitEthernet0/0/4]port trunk pvid vlan 5
+[Huawei-GigabitEthernet0/0/4]port trunk allow-pass vlan 10 20 30
+```
+
+此时该端口为trunk端口，PVID为5，放行vlan为10，20，30。
+
+该端口可以发送vlan ID为10，20，30的帧，发送出去的帧时有vlan tag的。
+
+该端口可以接收vlan ID为10，20，30的帧。
+
+```bash
+[Huawei-GigabitEthernet0/0/5]port link-type trunk
+[Huawei-GigabitEthernet0/0/5]port trunk pvid vlan 5
+[Huawei-GigabitEthernet0/0/5]port trunk allow-pass vlan 5 10 20 30
+```
+
+此时该端口为trunk端口，PVID为5，放行vlan为5，10，20，30。
+
+该端口可以发送vlan ID，5，10，20，30的帧，发送vlan ID为10、20、30的帧，帧是有vlan tag的；发送vlan ID为5的帧，帧时没有vlan tag的。
+
+该端口可以接收vlan ID为5，10，20，30的帧,，也可以接收没有vlan tag的帧。
+
+end
+
+#### Hybrid: tag and untag
+
+**总结**：hybird tagged + hybird untagged = trunk allow-pass
+
+Hybrid端口加入 VLAN：
+
+1. 命令**port hybrid tagged vlan** { { *vlan-id1* [ **to** *vlan-id2* ] } &<1-10> | **all** }，将端口加入到指定的VLAN中。
+
+   > 使用port hybrid tagged vlan 命令配置以Tagged形式将Hybrid类型接口加入VLAN后，接口在发送帧时不将帧中的VLAN Tag去掉。
+
+2. port hybrid untagged vlan vlan-id 或者 undo port hybrid vlan vlan-id，删除Hybrid port加入的VLAN
+
+   > port hybrid untagged vlan vlan-id命令用来配置Hybrid类型接口加入的VLAN，这些VLAN的帧以Untagged方式通过接口。
+
+缺省情况下，Hybrid端口以Untagged方式加入VLAN1。
+
+> display port vlan Ethernet0/0/1 active 可以显示
+
+1.hybrid端口接收帧时：
+
+①接收没有vlan tag的帧，hybrid端口将帧打上vlan tag，vlan ID和本端口的PVID相同，若该PVID在hybrid端口的放行vlan中，送入交换机，若PVID不在hybrid端口的放行vlan中，丢弃该帧。
+
+②接收有vlan tag的帧，若帧的vlan ID在hybrid端口的放行vlan中，送入交换机，若vlan ID不在hybrid端口的放行vlan中，丢弃该帧。
+
+2.hybrid端口发送帧时：
+
+①判断该VLAN在本端口的属性（disp interface 即可看到该端口对哪些VLAN是untag， 哪些VLAN是tag）
+②如果是untag则剥离VLAN信息，再发送，如果是tag则直接发送
+
+hybrid端口只能发送放行vlan中的帧，可以通过命令来控制发送时是否携带vlan tag。
+
+```bash
+[Huawei-GigabitEthernet0/0/6]port hybrid pvid vlan 10
+[Huawei-GigabitEthernet0/0/6]port hybrid tagged vlan 10 20 30
+## vlan 100 200 300需要untag在发送
+[Huawei-GigabitEthernet0/0/6]port hybrid untagged vlan 100 200 300
+```
+
+hybrid端口，PVID为10，放行的vlan有10、20、30、100、200、300。(untagged + tagged = allow-pass)
+
+端口接收帧时同trunk是一样。
+
+端口发送帧时，vlan ID为10、20、30的帧时有vlan tag的；vlan ID为100、200、300的帧时没有vlan tag的。
+
+end
+
+#### 查看交换机端口类型
+
+执行命令**display port vlan** *interface-type interface-number* **active**，查看设备上已创建成功的VLAN中包含的指定接口类型和编号的接口信息。
+
+```bash
+<Huawei>display port vlan Ethernet0/0/1 active
+T=TAG U=UNTAG
+-------------------------------------------------------------------------------
+Port                Link Type    PVID    VLAN List
+-------------------------------------------------------------------------------
+Eth0/0/1            hybrid       1       U: 1
+```
+
+end
 
 ### Switch Port and Link-type
 
@@ -68,9 +277,21 @@ PVID所在的端口必然是untag port，保障进去交换机内部的Frame是�
 
 > 一个交换机上可能有N个VLAN所以需要untaged保障来自不同vlan的包可以进入到该交换机。
 >
-> eg： 一个交换机 16 个端口，8个在VLAN_1，另外8个在VLAN_2。
+> eg： 一个交换机 16 个端口，8个在VLAN_10，另外8个在VLAN_20，1-16全都属于 vlan 300
 >
-> VLAN_1和VLAN_2需要 
+> VLAN_1和VLAN_2需要通信，则可以将端口设置为untagged + tagged +PVID，保障不同VID数据包可以进入该port。
+>
+> 1-8 port
+>
+> port hybrid pvid vlan 10
+>
+> port hybrid tagged vlan 10 
+>
+> port hybrid untagged vlan 300（发送vlan_300的package时，去掉vlan tag）
+>
+> port 同时属于vlan 10(tag) 和 vlan 300(untag)，当vlan 10 和 vlan 20通讯时，借助vlan 300 即可。
+
+
 
 Port VLAN ID，代表端口缺省VLAN ID.
 
@@ -143,22 +364,23 @@ $ sudo ip link add link eth0 name eth0.102 type vlan id 102
 
 由于eth0配置成了VLAN Trunk port。为了让带有VLAN标签的Ethernet Frame能够在网络上传输。eth0所接入的网络必须是一个Trunk network。否则无法传输任意带VLAN Tag的Ethernet Frame。也就是说，需要将主机的Trunk port连接到红框内。
 
-
 #### VLANID
+
+Tag和Untag，tag是指vlan的标签，即vlan的id，用于指名数据包属于那个vlan，untag指数据包不属于任何vlan，没有vlan标记。
 
 VLAN TAG包的VLAN ID号，有效范围是1-4094，0和4095都为协议保留值.
 
-VLAN内的Port可以接收发自这个VLAN的封包
-
-例如: 此port的VID = 2，代表此port可以接收VLAN2的封包。
+#### PVID and VID
 
 PVID与VID范例 :
 
 当Port1同时属于VLAN1、VLAN2和VLAN3时，而它的PVID为1，那么Port1可以接收到VLAN1，2，3的封包，但发出的封包只能发到VLAN1中。
 
-> 当 port 的 PVID = 1时，代表此 port 可以转发 VLAN1 的封包
+当 port 的 PVID = 1时，代表此 port 可以转发 VLAN1 的封包
 
 ##### tag port ： 针对VID
+
+tag报文结构的变化是在源mac地址和目的mac地址之后，加上了4bytes的vlan信息，也就是vlan tag头；一般来说这样的报文普通PC机的网卡是不能识别的。
 
 从此port 转发出的封包上都将有Tag (tagged)。若有非Tag的封包进入Switch，则其经过tagged port时，Tag将被加上。
 
@@ -166,11 +388,13 @@ PVID与VID范例 :
 
 ##### untag port：针对VID
 
+untag就是普通的ethernet报文，普通PC机的网卡是可以识别这样的报文进行通讯；
+
 此port**转发出**的封包上都没有Tag (untagged)。若有Tag的封包进入switch，则其经过untagged port时，Tag将被去除。(用于一般设备、电脑)
 
 所谓的untagged Port和tagged Port不是讲述物理端口的状态，而是将是物理端口所拥有的某一个VID的状态，所以一个物理端口可以在某一个VID上是untagged Port，在另一个VID上是tagged Port。 
 
-untag port和tag port是针对VID来说的，和PVID没有什么关系。比如有一个交换机的端口设置成untag port，但是从这个端口进入交换机的网络包如果没有vlan tag的话，就会被打上该端口的PVID，不要以为它是untag port就不会被打上vlan tag。
+untag port和tag port是针对VID来说的，和PVID没有什么关系。比如有一个交换机的端口设置成untag port，但是从这个端口进入交换机的网络包如果没有vlan tag的话，就会被打上该端口的PVID，**不要以为它是untag port就不会被打上vlan tag。**
 
 #### 收发报文：？
 
@@ -266,6 +490,8 @@ Error: The VLAN does not exist.
 
 
 
+
+
 ### 交换机转发VLAN帧
 
 #### 基础帧转发
@@ -342,34 +568,6 @@ PC1接在Port1，PC2接在Port5，因为这两个port都是untagged port，所�
 tagged port则不会将Tag移掉，会将封包交到正确的VLAN。
 
 
-
-### VLAN and IP Subnetwork：666
-
-通常，一个vlan对应一个Subnetwork~~~
-
-穷举一下，VLAN和IP子网，各种划分，会有4种情形
-
-1、A和B相同IP子网，相同VLAN：可以正常通讯，单播和广播通讯都会送达。
-
-2、A和B不同IP子网，相同VLAN：需要路由器才能单播通讯，但是会有广播跨IP子网互相干扰。
-
-3、A和B相同IP子网，不同VLAN：完全无法通讯，即使有路由器也不行。因为IP协议认为是发给近邻直连网络，数据不会路由给网关，会进行ARP请求广播，企图直接与目的主机通讯，可是由于B在另一个VLAN，网关不予转发ARP请求广播，B收不到ARP请求。结局是网络层ARP无法解析获得数据链路层需要的目的MAC，通讯失败。（除非：路由器上对两个VLAN之间进行桥接；或者路由器上进行静态NAT，若生成树设置不当容易把交换机搞死千万别作）
-
-> 不同vlan分配不同子网，方便路由管理，避免额外手工配置。
-
-4、A和B不同IP子网，不同VLAN：需要路由器才能进行单播通讯，不会有广播跨子网干扰。
-
-
-
-情形1是常见的小型局域网；
-
-情形2不应出现在正确配置的网络里，因为花了钱买路由器（三层交换机）但是钱白花了，没能隔离广播风暴；
-
-情形3是常见的家庭WiFi路由器配置故障，一些运营商进户线路经过NAT是192.168.1.0/24的地址段，家用WiFi路由器恰好也用192.168.1.0/24这个地址段作为Lan口默认地址，路由器Lan端和WAN端冲突，傻掉了（可以这样理解：家用路由器的Lan端和WAN端分别处于两个不同的VLAN）；
-
-情形4是常见的企业局域网。
-
-三层交换机用在什么地方？三层交换机最主要最擅长的应用就是进行VLAN之间的数据路由转发，这种应用场合下它的转发速度要远胜过专业路由器，它可以做到以二层帧交换的速度进行跨VLAN三层路由转发作业。但是通常来说它NAT效率不如专业路由器或防火墙，不能跨二层协议处理数据包，通常把它用在局域网网络核心节点。在局域网网络末节，比如说Internet接入处，通常都会再专设一台路由器或防火墙来进行链路层协议转换和NAT转换。可以这么简单的理解，三层交换机是一种只有以太网接口，只能处理以太网协议的路由器。（难道除了以太网还有别的？当然有，比如串行、PPP）虽然三层交换机和路由器在内部运作机制上不一样，对于用户而言，数据路由转发这个功能它俩都具备。
 
 
 
@@ -596,7 +794,7 @@ interface Vlanif10
 
 ```
 
-##### 业务网口-1
+#### 业务网口-1
 
 物理主机业务网口接入交换机的端口链路类型可以使用hybrid，或者trunk类型。
 配置示例：
@@ -619,7 +817,7 @@ interface Vlanif100
 
 end
 
-##### 业务网口-N
+#### 业务网口-N
 
 此处仅举例一个vlan配置情况，当业务网络规划多个vlan网络时，重复上述操作即可。此处配置需要牢记，管理网络信息在配置物理主机操作系统网卡时需要，业务网络信息在OpenStack搭建完成之后，创建虚拟机网络需要。
 
@@ -627,7 +825,14 @@ end
 
 https://www.1024sou.com/article/60783.html
 
+
+
+-----------------------------------
+
+
 ### 引用
+
+0. https://support.huawei.com/enterprise/zh/doc/EDOC1100059351/a64bb5c0
 
 1. https://blog.csdn.net/weixin_52122271/article/details/112383249
 2. https://blog.51cto.com/u_13212728/2516078
@@ -636,4 +841,5 @@ https://www.1024sou.com/article/60783.html
 3. https://blog.csdn.net/bunny_nini/article/details/104545978
 3. https://blog.51cto.com/u_15127681/2818076
 3. https://blog.csdn.net/luuJa_IQ/article/details/104134312
+3. https://blog.51cto.com/sevenot/2133771
 
