@@ -12,6 +12,8 @@ VLANs use software to emulate separate physical LANs. Each VLAN is thus a separa
 
 ### 通透世界
 
+学习的过程，就是将零散的知识，串联起来并且融入到自己的知识体现中，并随着自己知识水平的提供不断演化改进知识体系的过程。
+
 1. tag 和 untag 是针对 vlan ID，一个port 在 Trunk 或Hybird模式下，可以属于多个VLAN。所以，一个Port可以有N个 tag vlan 和 M个untag vlan。
 
    > Access port 只能属于一个 VLAN
