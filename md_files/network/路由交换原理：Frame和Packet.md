@@ -46,11 +46,29 @@ Forwarding Information Base，FIB表中每条转发表项都**指明到达某网
 
 FIB，二层转发，指定data从哪个物理口传输。
 
-#### ARP表
+```bash
+$ man route
+...
+ -F     operate on the kernel's FIB (Forwarding Information Base) routing table.  This is the default.
+...
+root@Dodo:~# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         172.21.175.253  0.0.0.0         UG    100    0        0 eth0
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+172.18.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-0a3f6ee27391
+172.21.160.0    0.0.0.0         255.255.240.0   U     0      0        0 eth0
+172.21.175.253  0.0.0.0         255.255.255.255 UH    100    0        0 eth0
+
+```
+
+end
+
+#### ARP and FDB表
 
 ARP表：IP和MAC的对应关系；
 
-FDB表：MAC+VLAN和PORT的对应关系；
+FDB表(Forwarding Data Base)：MAC+VLAN和PORT的对应关系；
 
 两个最大的区别在于ARP是三层转发，FDB是用于二层转发。也就是说，就算两个设备不在一个网段或者压根没配IP，只要两者之间的链路层是连通的，就可以通过FDB表进行数据的转发！
 
