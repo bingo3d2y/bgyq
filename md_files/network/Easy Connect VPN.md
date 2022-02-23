@@ -36,19 +36,13 @@ https://www.jianshu.com/p/30a77db87182
 
 好办勒，右键网络适配器，点击属性，把Npcap Package Driver协议勾选掉就行了---
 
-#### Npcap
-
-Npcap Packet Driver （NPCAP）
-是Nmap 项目的 Windows 数据包嗅探（和发送）库。它基于已停产的 WinPcap 库，但提高了速度、可移植性、安全性和效率。
-Npcap 能够使用 Windows 筛选平台 （WFP） 来嗅探环回数据包,环回数据包注入：Npcap 还能够使用 Winsock 内核 （WSK） 技术发送环回数据包。
-
 
 
 OpenVPN安装后生成新的网络设备：
 
  TAP-Windows Adapter V9 for OpenVPN Connect
 
-### windos网络协议冲突
+#### windos网络协议冲突
 
 错误现象：wifi无法连接，无线网络不能使用--
 
@@ -60,3 +54,11 @@ OpenVPN安装后生成新的网络设备：
 除了Microsoft网络客户端、Microsoft网络的文件和打印机共享、IPV4、IPV6， 以及后面两个链路层选项，其他的都取消勾选。
 
 主要是勾选掉Npcap两个协议。
+
+nonono，勾选掉Npcap，wireshark 无法抓包了，因为接口上需要安装Npcap协议才能捕获接口信息。
+
+#### Npcap
+
+Npcap Packet Driver （NPCAP）
+是Nmap 项目的 Windows 数据包嗅探（和发送）库。它基于已停产的 WinPcap 库，但提高了速度、可移植性、安全性和效率。
+Npcap 能够使用 Windows 筛选平台 （WFP） 来嗅探环回数据包,环回数据包注入：Npcap 还能够使用 Winsock 内核 （WSK） 技术发送环回数据包
