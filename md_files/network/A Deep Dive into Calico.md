@@ -10,6 +10,8 @@ why do you use Calico？
 
 ### 学习点：
 
+0. veth pair、proxy-arp、local link address
+
 1. bgp and ipip-patch-bgp
 2. RR and mesh-mesh
 3. network policy
@@ -58,8 +60,15 @@ Felix是一个守护程序，它在每个提供endpoints资源的计算机上运
 根据特定的编排环境，Felix负责以下任务：
 
 - 管理网络接口，Felix将有关接口的一些信息编程到内核中，以使内核能够正确处理该endpoint发出的流量。 特别是，它将确保主机正确响应来自每个工作负载的ARP请求，并将为其管理的接口启用IP转发支持。它还监视网络接口的出现和消失，以便确保针对这些接口的编程得到了正确的应用。
+
 - 编写路由，Felix负责将到其主机上endpoints的路由编写到Linux内核FIB（转发信息库）中。 这可以确保那些发往目标主机的endpoints的数据包被正确地转发。
+
+  > RIB作为控制平面（接受所有路由协议产生的路由信息），只告诉数据往哪个方向跳；而FIB作为转发层面，则告诉数据包具体怎么跳。
+  >
+  > 这种 RIB 加 FIB 的结构，使用控制平面的 RIB 和转发平面的 FIB 分离。这种分离使路由器的性能更加有连续性。
+
 - 编写ACLs，Felix还负责将ACLs编程到Linux内核中。 这些ACLs用于确保只能在endpoints之间发送有效的网络流量，并确保endpoints无法绕过Calico的安全措施。
+
 - 报告状态，Felix负责提供有关网络健康状况的数据。 特别是，它将报告配置其主机时发生的错误和问题。 该数据会被写入etcd，以使其对网络中的其他组件和操作才可见。
 
 #### BIRD
@@ -150,7 +159,15 @@ Calico 通过一个巧妙的方法将 workload 的所有流量引导到一个特
 
 **second**，local link address + gateway + arp_proxy 实现容器内数据的引流，确保它能从eth0发送到它在host上是caliXXX对端（veth pair）
 
+**last**，对bgp的简单利用实现pod的路由。
+
 #### gateway
+
+Why does my container have a route to 169.254.1.1?
+
+In a Calico network, each host acts as a gateway router for the workloads that it hosts. In container deployments, Calico uses 169.254.1.1 as the address for the Calico router. By using a link-local address, Calico saves precious IP addresses and avoids burdening the user with configuring a suitable address.
+
+While the routing table may look a little odd to someone who is used to configuring LAN networking, using explicit routes rather than subnet-local gateways is fairly common in WAN networking.
 
 ```bash
 ## 先看pod 奇怪的路由
@@ -160,7 +177,7 @@ default via 169.254.1.1 dev eth0
 169.254.1.1 dev eth0 scope link
 ## 再看arp信息
 ## 更奇怪全部都是ee:ee:ee:ee:ee:ee
-## 2.13是本机ip地址,是 pod IP?
+## 2.13是 pod ip地址。
 $ ip nei
 192.168.2.13 dev eth0 lladdr ee:ee:ee:ee:ee:ee STALE
 169.254.1.1 dev eth0 lladdr ee:ee:ee:ee:ee:ee STALE
@@ -169,6 +186,10 @@ $ ip nei del 192.168.2.13 dev eth0
 ```
 
 #### local link address
+
+Calico sets the `proxy_arp` flag on the interface. **This makes the host behave like a gateway,** responding to ARPs for 169.254.1.1 without having to actually allocate the IP address to the interface.
+
+https://projectcalico.docs.tigera.io/reference/faq#why-does-my-container-have-a-route-to-16925411
 
 ```bash
 ## 尝试添加169.254.1.2
@@ -204,26 +225,29 @@ $ ip r add  default via 169.254.1.2
 RTNETLINK answers: File exists
 ```
 
-#### arp_proxy
+#### arp_proxy: 
+
+每个 pod veth pair，都会开启proxy_arp，实现`169.254.1.1`的引流。
+
+In container deployments, Calico only uses proxy ARP for resolving the 169.254.1.1 address. The routing table inside the container ensures that all traffic goes via the 169.254.1.1 gateway so that is the only IP that will be ARPed by the container.
 
 是否开启arp代理，开启arp代理的话则会以自己的mac地址回复arp请求，0为不开启，1则开启。
 
 **在开启了proxy_arp的情况下，如果请求中的ip地址不是本机网卡接口的地址：但是有该地址的路由，则会以自己的mac地址进行回复；如果没有该地址的路由，不回复**
 
+开启arp代理
+
 ```bash
-## without IPIP mode
+## pod veth pair
 $ cat /proc/sys/net/ipv4/conf/cali4158485edce/proxy_arp
 1
 
-## IPIP mode
-## 而且没有/proc/sys/net/ipv4/conf/cali4158485edce/proxy_arp 接口配置
+## IPIP mode tunnel0 不需要开启arp proxy
 $ cat /proc/sys/net/ipv4/conf/tunl0/proxy_arp
 0
 ```
 
 ipip就是tunnel的一种实现，Point-to-Point通信。避免中间经过没有k8s cluster bgp信息的路由（bird node或者Router）,所以要开启arp_proxy。
-
-**last**，对bgp的简单利用实现pod的路由。
 
 详细分析：
 
@@ -297,6 +321,8 @@ calicoctl也是从etcd中读取系统的状态信息，指令是通过改写etcd
 
 IP-ip-IP相当于起的Tunnel，完成两个calico-node（bird）的直连，因为如果L 2不可达，那么下一跳的Router可能没有Calico的bgp信息，就导致无法通信了。
 
+If Calico is configured to use IPIP mode, then the cloud must be configured to allow IPIP (protocol 4) network traffic.
+
 **IP in IP** is an [IP tunneling](https://en.wikipedia.org/wiki/IP_tunnel) protocol that encapsulates one [IP](https://en.wikipedia.org/wiki/Internet_Protocol) packet in another IP packet. 
 
 Calico控制平面的设计要求物理网络得是L2 Fabric，这样vRouter间都是直接可达的为了支持L3 Fabric，Calico推出了IPinIP Mode。
@@ -347,7 +373,67 @@ end
 
 从路由表中发现到192.168.169.196的路由是通过网关`10.39.0.1`送出。
 
-calico没有网关进行路由交换，网关10.39.0.1并不知道192.168.169.192的存在。
+calico没有网关进行路由交换，网关10.39.0.1并不知道192.168.169.192的存在。\
+
+#### 实际分析：有个问题
+
+pod网络信息:
+
+veth pair存在并开启proxy_arp，实现网关引流。
+
+有个问题：
+
+流量怎么到tunnel0的，如果是在node上转入tunnel0的，那么为什么pod 里要出现`tunl0@NONE`接口。
+
+猜测，pod 里没有 `link/ipip`无法使用ipip协议传输数据？！
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/calico-ipip-pod.png)
+
+主机上`tunl0`接口，`172.10`是pod cidr
+
+Those IP addresses you see are allocated from Calico’s pool of IP addresses , which in most cases should be the same as the cluster CIDR for your Kubernetes network
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/calico-ipip-node.png)
+
+---
+
+
+
+当我们有两台宿主机，一台是10.100.0.2/24，节点上容器网络是10.92.204.0/24;另外一台是10.100.1.2/24,节点上容器网络是10.92.203.0/24,此时两台机器因为不在同个二层所以需要三层路由通信，这时calico就会在节点上生成如下路由表:
+
+```bash
+## 跨网段，网关不可达
+10.92.203.0/23 via 10.100.1.2 dev eth0 proto bird
+```
+
+这时候问题就来了，因为10.100.1.2跟我们10.100.0.2不在同个子网，是不能二层通信的。这之后就需要使用Calico IPIP模式，当宿主机不在同个二层网络时就是用overlay网络封装以后再发出去。如下图所示：
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/calico-ipip.png)
+
+IPIP模式下在非二层通信时,calico 会在node节点添加如下路由规则:
+
+```
+10.92.203.0/24 via 10.100.1.2 dev tunnel0
+```
+
+可以看到尽管下一条任然是node的IP地址，但是出口设备却是tunnel0,其是一个IP隧道设备，主**要有Linux内核的IPIP驱动实现**。会将容器的ip包直接封装宿主机网络的IP包中，这样到达node2以后再经过IPIP驱动拆包拿到原始容器IP包，然后通过路由规则发送给veth pair设备到达目标容器。
+
+以上尽管可以解决非二层网络通信，但是仍然会因为封包和解包导致性能下降。如果calico 能够让宿主机之间的router设备也学习到容器路由规则，这样就可以直接三层通信了。比如在路由器添加如下的路由表:
+
+```bash
+# 10.92 是 pod 网段
+10.92.203.0/24 via 10.100.1.2 dev interface1
+## 类似抓包信息
+16:41:07.884165 IP 10.39.0.110 > 10.39.3.75: IP 192.168.70.42 > 192.168.169.196: ICMP echo request, id 20142, seq 13, length 64 (ipip-proto-4)
+```
+
+而node1添加如下的路由表:
+
+```
+10.92.203.0/24 via 10.100.1.1 dev tunnel0
+```
+
+那么node1上的容器发出的IP包，基于本地路由表发送给10.100.1.1网关路由器，然后路由器收到IP包查看目的IP，通过本地路由表找到下一跳地址发送到node2，最终到达目的容器。这种方案，我们是可以基于underlay 网络来实现，只要底层支持BGP网络，可以和我们RR节点建立EBGP关系来交换集群内的路由信息。
 
 #### BGP Patch for IPIP：mark，666
 
@@ -398,7 +484,342 @@ via BGP would be immediately correct.
 
 Basically, it's a simple overlay network.
 
+#### rr实际配置
 
+RR 模式可以实现pod ip 和 svc ip 被集群外访问。
+
+不同网段的机器无法直接通过`ip route svs_subnet via host`指向host,因为下一跳必须是同网段。
+
+① 在上层路由器中添加规则，不过这样对网络有入侵性
+
+②在要访问的网段中也起一个calico，与k8s的rr_host 组网即可。
+
+目的： 实现pod ip可以在集群外被访问到。
+
+pod_subnet 和 svc_subnet 都可以通过加路由暴露出去。
+
+https://mritd.me/2019/06/18/calico-3.6-forward-network-traffic/
+
+而且这个必Flannel-gw好，f-gw模式还得加N个路由，而这个bpg只需一条路由即可。
+
+在 Calico 3.3 后支持了集群内节点的 RR 模式，即将某个集群内的 Calico Node 转变为 RR 节点；将某个节点设置为 RR 节点只需要增加 `routeReflectorClusterID` 即可。
+
+https://docs.projectcalico.org/v3.6/networking/bgp
+
+0.0 官网都有，注意选择对应版本。
+
+For a larger deployment you can [disable the full node-to-node mesh](https://docs.projectcalico.org/v3.6/networking/bgp#disabling-the-full-node-to-node-bgp-mesh) and configure some of the nodes to provide in-cluster route reflection. Then every node will still get all workload routes, but using a much smaller number of BGP connections.
+
+**Note**: For a simple deployment, all the route reflector nodes should have the same cluster ID.
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/calico-rr.jpg)
+
+Calico方案只是把"hostnetwork"（这个是加引号的hostnetwork）方案配置自动化了。由于还是通过物理设备进行虚拟设备的管理和通信，所以整个网络依然受物理设备的限制影响；另外因为项目及设备数量的增加，内网IP也面临耗尽问题。
+
+Host Network”将游戏服务器的虚拟IP也配置成实体IP，并注入到主路由中。但这使得主路由的设备条目数比设计容量多了三倍。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/pod-hostnet.jpg)
+
+也说明了这个问题，当使用bgp将网络打通后podIP也充斥着整个网络拓扑，私有ip可能不足，这得多少节点。
+
+核心思路：
+
+1. 取消node-to-node mesh （BGPConfiguration）
+2. 配置node作为route reflector node
+3. 验证node status
+4. 配置集群外机器/路由器 到 podSubnet 和 svcSubnet的路由，使外部node可以访问pod
+
+在node-to-node-mesh方式下，每个calico node执行`calicoctl node status`时，可以看到`N-1`个node的状态。**但是使用RouteReflector时，RR-node和Normal-node显示的node status是不一样的。**
+
+```bash
+## 我采用deamonset方式部署的，所以在任何一个pod中操作calicoctl即可。
+
+## 原集群互通方式：node-to-node mesh 
+/ # /tmp/calicoctl node status
+Calico process is running.
+
+IPv4 BGP status
++--------------+-------------------+-------+------------+-------------+
+| PEER ADDRESS |     PEER TYPE     | STATE |   SINCE    |    INFO     |
++--------------+-------------------+-------+------------+-------------+
+| 21.49.22.4   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.5   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.6   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.7   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.8   | node-to-node mesh | up    | 2019-11-25 | Established |
++--------------+-------------------+-------+------------+-------------+
+
+IPv6 BGP status
+No IPv6 peers found.
+
+## 选择node1 和 node2 作为 router reflect
+
+/ # vim /tmp/n1.yaml 
+apiVersion: projectcalico.org/v3
+kind: Node
+metadata:
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    ingress: nginx
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: cs1-k8s-n1.zpepc.com.cn
+    kubernetes.io/os: linux
+    node-role.kubernetes.io/worker: ""
+    ## 增加一个label 用于区分 node 和 routeReflector， 这里命名也随意--
+    route-reflector: true
+  name: cs1-k8s-n1.zpepc.com.cn
+spec:
+  bgp:
+    ipv4Address: 21.49.22.7/24
+    ##个人猜测 这个clusterID随便写
+    routeReflectorClusterID: 1.0.0.1
+  orchRefs:
+  - nodeName: cs1-k8s-n1.zpepc.com.cn
+    orchestrator: k8s
+/ # vim /tmp/n2.yaml 
+apiVersion: projectcalico.org/v3
+kind: Node
+metadata:
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    ingress: nginx
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: cs1-k8s-n2.zpepc.com.cn
+    kubernetes.io/os: linux
+    monitor: prometheus
+    node-role.kubernetes.io/worker: ""
+    route-reflector: true
+  name: cs1-k8s-n2.zpepc.com.cn
+spec:
+  bgp:
+    ipv4Address: 21.49.22.8/24
+    routeReflectorClusterID: 1.0.0.1
+  orchRefs:
+  - nodeName: cs1-k8s-n2.zpepc.com.cn
+    orchestrator: k8s
+
+## 应用配置，设置node1 和 node2 作为 rr
+/ # /tmp/calicoctl apply -f /tmp/n1.yaml 
+Successfully applied 1 'Node' resource(s)
+/ # /tmp/calicoctl apply -f /tmp/n2.yaml 
+Successfully applied 1 'Node' resource(s)
+
+## 再次查看node状态，n1 和 n2，已经变了
+/ # /tmp/calicoctl node status
+Calico process is running.
+
+IPv4 BGP status
++--------------+-------------------+-------+------------+--------------------------------+
+| PEER ADDRESS |     PEER TYPE     | STATE |   SINCE    |              INFO              |
++--------------+-------------------+-------+------------+--------------------------------+
+| 21.49.22.4   | node-to-node mesh | up    | 2019-11-25 | Established                    |
+| 21.49.22.5   | node-to-node mesh | up    | 2019-11-25 | Established                    |
+| 21.49.22.6   | node-to-node mesh | up    | 2019-11-25 | Established                    |
+| 21.49.22.7   | node-to-node mesh | start | 06:11:21   | Active Socket: Connection      |
+|              |                   |       |            | refused                        |
+| 21.49.22.8   | node-to-node mesh | start | 06:11:25   | Active Socket: Connection      |
+|              |                   |       |            | refused                        |
++--------------+-------------------+-------+------------+--------------------------------+
+
+IPv6 BGP status
+No IPv6 peers found.
+
+
+
+## Configure a BGPPeer resource to tell the route reflector nodes to peer with each other.
+## 即RR之间的互联
+/ # cat r-to-r.yaml 
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: rr-to-rr-peer
+spec:
+  nodeSelector: has(route-reflector)
+  peerSelector: has(route-reflector)
+  
+## Configure a BGPPeer resource to tell the other Calico nodes to peer with the route reflector nodes.
+## 即Calico nodes 与 rr-nodes直接的互联
+/ # cat n-to-no.yaml 
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: node-peer-to-rr
+spec:
+  nodeSelector: !has(route-reflector)
+  peerSelector: has(route-reflector)
+
+## apply
+/ # /tmp/calicoctl apply -f n-to-no.yaml 
+Successfully applied 1 'BGPPeer' resource(s)
+/ # /tmp/calicoctl apply -f r-to-r.yaml 
+Successfully applied 1 'BGPPeer' resource(s)
+/ # 
+
+## 这个pod 不是 rr-node所以看到两个global
+/ # /tmp/calicoctl node status
+Calico process is running.
+
+IPv4 BGP status
++--------------+-------------------+-------+------------+-------------+
+| PEER ADDRESS |     PEER TYPE     | STATE |   SINCE    |    INFO     |
++--------------+-------------------+-------+------------+-------------+
+| 21.49.22.4   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.5   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.6   | node-to-node mesh | up    | 2019-11-25 | Established |
+| 21.49.22.7   | node-to-node mesh | up    | 06:13:01   | Established |
+| 21.49.22.8   | node-to-node mesh | up    | 06:13:03   | Established |
+| 21.49.22.7   | global            | start | 06:12:59   | Idle        |
+| 21.49.22.8   | global            | start | 06:12:59   | Idle        |
++--------------+-------------------+-------+------------+-------------+
+
+IPv6 BGP status
+No IPv6 peers found.
+
+### 禁用mesh
+/ # /tmp/calicoctl apply -f bgp-config.yaml 
+Successfully applied 1 'BGPConfiguration' resource(s)
+
+$ cat << EOF | calicoctl create -f -
+ apiVersion: projectcalico.org/v3
+ kind: BGPConfiguration
+ metadata:
+   name: default
+ spec:
+   logSeverityScreen: Info
+   nodeToNodeMeshEnabled: false
+   asNumber: 63400
+
+## 非rr-node calicoctl
+/ # /tmp/calicoctl node status
+Calico process is running.
+
+IPv4 BGP status
++--------------+-----------+-------+----------+-------------+
+| PEER ADDRESS | PEER TYPE | STATE |  SINCE   |    INFO     |
++--------------+-----------+-------+----------+-------------+
+| 21.49.22.7   | global    | up    | 06:14:36 | Established |
+| 21.49.22.8   | global    | up    | 06:14:34 | Established |
++--------------+-----------+-------+----------+-------------+
+
+IPv6 BGP status
+No IPv6 peers found.
+
+## rr-node calicoctl node status display
+[root@cs1-k8s-m1 ~]# k exec -it calico-node-hnvfd sh
+/ # /tmp/calicoctl node status
+Calico process is running.
+
+IPv4 BGP status
++--------------+---------------+-------+----------+-------------+
+| PEER ADDRESS |   PEER TYPE   | STATE |  SINCE   |    INFO     |
++--------------+---------------+-------+----------+-------------+
+| 21.49.22.5   | node specific | up    | 06:14:34 | Established |
+| 21.49.22.6   | node specific | up    | 06:14:36 | Established |
+| 21.49.22.8   | global        | up    | 06:14:36 | Established |
+| 21.49.22.4   | node specific | up    | 06:14:34 | Established |
+| 21.49.22.9   | node specific | up    | 06:14:36 | Established |
++--------------+---------------+-------+----------+-------------+
+
+## 查看bgp 监听状态，判断calico network是否正常
+[root@cs1-k8s-m1 zabbix]# netstat -anp|grep ESTABLISH|grep bird
+tcp        0      0 21.49.22.4:43833        21.49.22.8:179          ESTABLISHED 28676/bird          
+tcp        0      0 21.49.22.4:179          21.49.22.7:57003        ESTABLISHED 28676/bird          
+[root@cs1-k8s-m1 zabbix]# s1.sh "netstat -anp|grep ESTABLISH|grep bird"
+172.29.33.2
+exec: {netstat -anp|grep ESTABLISH|grep bird}
+tcp        0      0 21.49.22.5:179          21.49.22.8:47399        ESTABLISHED 9475/bird           
+tcp        0      0 21.49.22.5:51054        21.49.22.7:179          ESTABLISHED 9475/bird           
+172.29.33.3
+exec: {netstat -anp|grep ESTABLISH|grep bird}
+tcp        0      0 21.49.22.6:179          21.49.22.7:58982        ESTABLISHED 13563/bird          
+tcp        0      0 21.49.22.6:51025        21.49.22.8:179          ESTABLISHED 13563/bird          
+172.29.33.4
+exec: {netstat -anp|grep ESTABLISH|grep bird}
+tcp        0      0 21.49.22.7:179          21.49.22.5:51054        ESTABLISHED 183331/bird         
+tcp        0      0 21.49.22.7:58982        21.49.22.6:179          ESTABLISHED 183331/bird         
+tcp        0      0 21.49.22.7:57003        21.49.22.4:179          ESTABLISHED 183331/bird         
+tcp        0      0 21.49.22.7:179          21.49.22.9:45545        ESTABLISHED 183331/bird         
+tcp        0      0 21.49.22.7:53892        21.49.22.8:179          ESTABLISHED 183331/bird         
+172.29.33.5
+exec: {netstat -anp|grep ESTABLISH|grep bird}
+tcp        0      0 21.49.22.8:179          21.49.22.6:51025        ESTABLISHED 147181/bird         
+tcp        0      0 21.49.22.8:179          21.49.22.7:53892        ESTABLISHED 147181/bird         
+tcp        0      0 21.49.22.8:47399        21.49.22.5:179          ESTABLISHED 147181/bird         
+tcp        0      0 21.49.22.8:179          21.49.22.4:43833        ESTABLISHED 147181/bird         
+tcp        0      0 21.49.22.8:179          21.49.22.9:36948        ESTABLISHED 147181/bird         
+172.29.33.6
+exec: {netstat -anp|grep ESTABLISH|grep bird}
+tcp        0      0 21.49.22.9:36948        21.49.22.8:179          ESTABLISHED 30004/bird          
+tcp        0      0 21.49.22.9:45545        21.49.22.7:179          ESTABLISHED 30004/bird 
+
+/ # /tmp/calicoctl get bgpPeer
+NAME              PEERIP   NODE                   ASN   
+node-peer-to-rr            (global)               0     
+rr-to-rr-peer              has(route-reflector)   0   
+
+
+/ # /tmp/calicoctl get ippool
+NAME                  CIDR             SELECTOR   
+default-ipv4-ippool   192.168.0.0/16   all()      
+
+/ # /tmp/calicoctl get ippool -o yaml
+apiVersion: projectcalico.org/v3
+items:
+- apiVersion: projectcalico.org/v3
+  kind: IPPool
+  metadata:
+    creationTimestamp: 2019-06-20T12:11:48Z
+    name: default-ipv4-ippool
+    resourceVersion: "3553201"
+    uid: 942e9bba-9354-11e9-8482-6c92bf52e922
+  spec:
+    blockSize: 26
+    cidr: 192.168.0.0/16
+    ## 这里设置成CrossSubnet也行
+    ipipMode: Never
+    natOutgoing: true
+    nodeSelector: all()
+kind: IPPoolList
+metadata:
+  resourceVersion: "37065994"
+
+
+
+# workloadendpoint 即pod
+/ # /tmp/calicoctl get workloadEndpoint --all-namespaces
+NAMESPACE        WORKLOAD                                      NODE                      NETWORKS             INTERFACE         
+cattle-system    cattle-cluster-agent-6c858f878b-xx5fl         cs1-k8s-m1.zpepc.com.cn   192.168.36.85/32     calib2b8b0c572a   
+...
+yxwyy            eunomia-cas-67fc99f4cb-f77st                  cs1-k8s-n3.zpepc.com.cn   192.168.11.236/32    calibe0045ced01   
+
+
+## 呐，重头戏了。在外部机器上添加路由即可实现
+## svc ip也可以真的野啊
+[root@cs1-harbor-1 ~]# ip r add 192.168.0.0/16 via 21.49.22.7
+
+[root@cs1-harbor-1 ~]# curl  192.168.1.161:8080 -I
+HTTP/1.1 200 OK
+Server: nginx/1.10.0
+Date: Sun, 29 Dec 2019 08:59:33 GMT
+Content-Type: text/plain
+Connection: keep-alive
+
+## 添加node-1 或 node-2 都行
+[root@cs1-harbor-1 ~]# ip r add 10.96.0.0/12 via 21.49.22.8
+[root@cs1-harbor-1 ~]# curl  10.102.102.13:8080 -I
+HTTP/1.1 200 OK
+Server: nginx/1.10.0
+Date: Sun, 29 Dec 2019 09:07:08 GMT
+Content-Type: text/plain
+Connection: keep-alive
+
+## 当然最方便的肯定是将这一步在开发网络的路由上做，设置完成后开发网络就可以直连集群内的 Pod IP 和 Service IP 了；至于想直接访问 Service Name 只需要调整上游 DNS 解析既可
+https://blog.foxsar.black/?p=246
+```
+
+end
 
 ### Calico实践：6
 
@@ -407,6 +828,8 @@ Basically, it's a simple overlay network.
 默认情况下，calico访问集群外网络是通过SNAT成宿主机ip方式。
 
 如果关闭NAT会导致复杂网络环境下（比如国网私有OpenStack and 其他物理机）pod 无法与集群外的node交流，因为网络环境负责有防火墙策略阻挡，只允许k8s cluster node 网段访问 集群外的node。
+
+在网络策略复杂且k8s pod 与 主机互联的场景下，开启NAT回好点
 
 #### 关闭NAT
 
@@ -615,6 +1038,10 @@ PING 10.20.1.3 (10.20.1.3) 56(84) bytes of data.
 
 
 ### NetworkPolicy（k8s和calico两套）:eyes:
+
+GlobalNetworkPolicy ： 可以控制 host and pod endpoint
+
+NetworkPolicy ： 仅可以控制pod endpoint
 
 先抛出问题来，对某个pod设置NetworkPolicy后，实现了ACL但是也导致了node（除了该pod所在的node其余的node）均无法访问该POD
 
@@ -1216,3 +1643,4 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 3. https://imliuda.com/post/1015
 4. https://www.v2k8s.com/kubernetes/t/205
 5. https://www.bladewan.com/2020/11/18/calico_ops/
+5. https://tech.ipalfish.com/blog/2020/03/06/kubernetes_container_network/
