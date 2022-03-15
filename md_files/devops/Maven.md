@@ -1,5 +1,17 @@
 ### Maven
 
+#### Java参数
+
+java启动参数共分为三类：
+
+其一是**标准参数**（**-**），所有的JVM实现都必须实现这些参数的功能，而且向后兼容；
+
+其二是**非标准参数**（**-X**），默认jvm实现这些参数的功能，但是并不保证所有jvm实现都满足，且不保证向后兼容；
+
+其三是**非Stable参数**（**-XX**），此类参数各个jvm实现会有所不同，将来可能会随时取消，需要慎重使用；
+
+
+
 #### Maven仓库优先级配置
 
 Repository Order
@@ -34,6 +46,80 @@ maven仓库的优先级别为
 3.总结上面所说的，Maven 仓库的优先级就是 **私服和远程仓库** 的对比，没有其它的仓库类型。为什么这么说是因为，镜像等同远程，而中央其实也是 maven super xml 配置的一个repository 的一个而且。所以 maven 仓库真正的优先级为
 
 > 本地仓库 > 私服（profile）> 远程仓库（repository）
+>
+> 
+
+#### mirrorOf and profile: mark
+
+mirrorOf可以理解“为某个仓库（repository）的做镜像”，填写的是repostoryId。”*“ 的意思就是匹配所有的仓库（repository）。相当于一个拦截器，它会拦截maven对remote repository的相关请求，把请求里的remote repository地址，重定向到mirror里配置的地址。
+
+即`mirrorOf *`会导致配置的其他所以repositories失效，都被拦截转到mirror URL了。
+
+在maven中配置一个mirror时，有多种形式，例如:
+
+* `mirrorOf=“*” `//刚才经过，mirror一切，你配置的repository不起作用了
+* `mirrorOf=my-repo-id` //镜像my-repo-id，你配置的my-repo-id仓库不起作用了
+* `mirrorOf=*,!my-repo-id` //!表示非运算，排除你配置的my-repo-id仓库，其他仓库都被镜像了。就是请求下载my-repo-id的仓库的jar不使用mirror的url下载，其他都是用mirror配置的url下载
+* `mirrorOf=external:` //如果本地库存在就用本地库的，如果本地没有所有下载就用mirror配置的url下载
+
+
+
+```xml
+<!-- mirrorOf * 表示所有artifact获取都经过mirror配置的url -->	
+   <mirror>
+      <id>nexus-aliyun</id>
+      <mirrorOf>*</mirrorOf>
+      <name>Nexus aliyun</name>
+      <url>http://maven.aliyun.com/nexus/content/groups/public</url>
+    </mirror> 
+
+<!-- 自定义私有仓库 -->
+ <profiles>
+    <!-- profile
+     | Specifies a set of introductions to the build process, to be activated using one or more of the
+     | mechanisms described above. For inheritance purposes, and to activate profiles via <activatedProfiles/>
+     | or the command line, profiles have to have an ID that is unique.
+     |
+    -->
+	<profile>
+        <id>pipeline_auto_config_profile</id>
+        <repositories>
+            <repository>
+                <id>湖北中烟依赖库</id>
+                <releases>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </releases>
+                <snapshots>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </snapshots>
+                <url>http://10.156.23.49:8081/repository/maven-public/</url>
+            </repository>
+        </repositories>
+        <pluginRepositories>
+            <pluginRepository>
+                <id>湖北中烟依赖库</id>
+                <releases>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </releases>
+                <snapshots>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </snapshots>
+                <url>http://10.156.23.49:8081/repository/maven-public/</url>
+            </pluginRepository>
+        </pluginRepositories>
+        <activation>
+            <activeByDefault>true</activeByDefault>
+        </activation>
+    </profile>
+
+  </profiles>
+```
+
+end
 
 #### mvn and setting.xml 配置
 
@@ -192,6 +278,8 @@ end
 end
 
 #### mvn 命令
+
+mvn clean:清理项目建的临时文件,一般是模块下的target目录
 
 mvn clean package依次执行了clean、resources、compile、testResources、testCompile、test、jar(打包)等７个阶段。
 mvn clean install依次执行了clean、resources、compile、testResources、testCompile、test、jar(打包)、install等8个阶段。
@@ -503,4 +591,5 @@ end
 ### 引用
 
 1. https://blog.csdn.net/zhaojianting/article/details/80324533
-2. https://maven.apache.org/guides/mini/guide-multiple-repositories.html
+2. https://maven.apache.org/guides/mini/guide-multiple-repositories.html 
+2. https://www.jianshu.com/p/c4f02c5bdfc7

@@ -105,9 +105,11 @@ npm(group)： 可配置包含上面两种仓库，这样用户只需要配置npm
 
 ##### Nexus： 配置代理仓库
 
+##### maven 命令行区分大小写：windows下也区分
 
 
-##### Nexus：命令行上传artifact到私有仓库, mark
+
+##### Nexus：命令行上传artifact到私有仓库, 区分大小写mark
 
 nexus3 web端不提供直接上传快照的页面
 
@@ -115,14 +117,48 @@ nexus3 web端不提供直接上传快照的页面
 
 snapshot jar 需要使用mvn命令行手动上传
 
+修改maven settings.xml
+
+```xml
+<servers>
+   <server>
+       <!-- maven -DrepositoryId -->
+      <id>maven-snapshots</id>
+      <username>admin</username>
+      <password>hbzy@123</password>
+    </server>
+</servers>
+```
+
+命令行格式
+
+If you're using `-DpomFile=` you don't need to use groupID and artifactID; those will be inferred from the pom. 
+
+究极体：
+
+```bash
+mvn deploy:deploy-file  -DgroupId=com.nti56  -Dversion=<Version>  -Dfile=<File_path> -DpomFile=<Pomfile_path> -Durl=http://10.156.23.49:8081/repository/maven-snapshots/ -DrepositoryId=maven-snapshots
+```
+
+end
+
+```bash
+## only pom
+mvn deploy:deploy-file -DgroupId=<GroupID> -DartifactId=<ArtifactId> -Dversion=<Pom_Version> -Dpackaging=pom -Dfile=<Pom_file_path> -Durl=http://<Nexus_IP>/repository/maven-snapshots/ -DrepositoryId=<Repo_ID> -X
+## pom and jar
+mvn deploy:deploy-file -DgroupId=<GroupID>  -DartifactId=<ArtifactId>  -Dversion=<Jar_Version> -Dpackaging=jar -Dfile=<Jar_file_path> -DpomFile=<Pom_file_path> -Durl=http://<Nexus_IP>/repository/maven-snapshots/ -DrepositoryId=<Repo_ID> -X
+```
+
+
+
 405 put 问题： As indicated in the comments, you can only deploy to Maven Hosted Repositories, not Proxies. This is by design.
 
 ```bash
 ## 仅pom
-mvn deploy:deploy-file -DgroupId=com.wiseda.daip -DartifactId=daip-parent -Dversion=1.0.0-SNAPSHOT -Dpackaging=pom -Dfile=daip-parent-1.0.0-SNAPSHOT.pom -Durl=http://10.156.23.49:8081/repository/maven-snapshots/ -DrepositoryId=nexus -X
+mvn deploy:deploy-file -DgroupId=com.wiseda.daip -DartifactId=daip-parent -Dversion=1.0.0-SNAPSHOT -Dpackaging=pom -Dfile=daip-parent-1.0.0-SNAPSHOT.pom -Durl=http://10.156.23.49:8081/repository/maven-snapshots/ -DrepositoryId=<Repo_ID> -X
 
 ## 上传 snapshot jar
-mvn deploy:deploy-file -DgroupId=com.wiseda.daip -DartifactId=daip-proxy -Dversion=1.0.0-SNAPSHOT -Dpackaging=jar -Dfile=daip-common-1.0.0-SNAPSHOT.jar -DpomFile=daip-common-1.0.0-SNAPSHOT.pom -Durl=http://10.156.23.49:8081/repository/maven-snapshots/ -DrepositoryId=nexus -X
+mvn deploy:deploy-file -DgroupId=com.wiseda.daip -DartifactId=daip-proxy -Dversion=1.0.0-SNAPSHOT -Dpackaging=jar -Dfile=daip-common-1.0.0-SNAPSHOT.jar -DpomFile=daip-common-1.0.0-SNAPSHOT.pom -Durl=http://10.156.23.49:8081/repository/maven-snapshots/ -DrepositoryId=<Reop_ID> -X
 
 ```
 
