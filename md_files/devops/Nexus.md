@@ -193,6 +193,31 @@ maven包的版本有两类，一类是 SNAPSHOT，一类是 RELEASE。
 - snapshot 版本代表不稳定、尚处于开发中的版本，即快照版本
 - release 版本代表功能趋于稳定、当前更新停止，可以用于发行的版
 
+#### 使用场景
+
+- 依赖库中的 jar 包若处于不断更新，更准确的说是不停 deploy 时，deploy会发布到私服，则使用snapshot
+
+  - 格式：<version>1.0-snapshot</version>
+
+  - 特点
+
+    - 不停更新/deploy 时，**版本号1.0不需更改**，私服中会**自动追加后缀时间**为版本名
+
+    - 其他系统使用时，会自动load**时间最近也即最新的版本**
+
+      或者使用`mvn -U`强制更新snapshot jar
+
+- 当第三方 jar 包功能确定时，可以提供一个release版本
+
+  - 格式：<version>1.0</version>，**去掉-snapshot即可**
+  - 特点
+    - 其他系统使用时，版本号不变，依赖包则不变，**不会自动load最新版本**
+    - 上述有两个意思
+      - 假设第三方对 1.0 version 更新了，但本地有旧的 1.0 version，其他系统**不会更新引入私服中最新的1.0**，与snapshot的区别
+      - 第三方 升级了2.0，其他系统必须**手动更新**依赖的version为 2.0，否则不能引入最新版本，**这也是相对snapshot比较麻烦的地方**
+
+
+
 ### jar and war: mark
 
 jar：即Java Archive，Java的包，Java编译好之后生成class文件，但如果直接发布这些class文件的话会很不方便，所以就把许多的class文件打包成一个jar，jar中除了class文件还可以包括一些资源和配置文件，通常一个jar包就是一个java程序或者一个java库。
@@ -227,4 +252,6 @@ package 找不到，package是什么--
 
 
 
-1. 
+### 引用
+
+1. https://www.jianshu.com/p/084fd2408d9a

@@ -46,8 +46,16 @@ maven仓库的优先级别为
 3.总结上面所说的，Maven 仓库的优先级就是 **私服和远程仓库** 的对比，没有其它的仓库类型。为什么这么说是因为，镜像等同远程，而中央其实也是 maven super xml 配置的一个repository 的一个而且。所以 maven 仓库真正的优先级为
 
 > 本地仓库 > 私服（profile）> 远程仓库（repository）
->
-> 
+
+##### Local repository
+
+默认local repository is `~/.m2/repository/`
+
+当 dependency artifact存在本地时，就不需要在从remote repository download，节约构建时间。
+
+典型应用：
+
+jenkins-slave 使用pod模式运行在k8s集群上时，可以定义一个ManyReadWrite PVC，多个pod同时使用，都挂载到`/root/.m2/repository`目录，实现本地仓库的持久化。 
 
 #### mirrorOf and profile: mark
 
@@ -215,6 +223,21 @@ jar包不变，修改pom.xml 中的version
 
 end
 
+##### modules
+
+maven聚合项目查看那个是root module，可以在项目中搜索`modules`
+
+```xml
+  <!-- pom 文件 module决定了谁是root -->
+    <modules>
+        <module>app</module>
+        <module>data-structure-conversion</module>
+    </modules>
+
+```
+
+end
+
 ##### 跳过plugin
 
 跳过pom中定义的某个插件执行`<skip>true</skip>`
@@ -356,7 +379,17 @@ Spring Boot Version: 2.2.13.RELEASE
 
 end
 
+#### Maven force update-snapshots ：mark
 
+snapshot版本
+
+```bash
+# -U --update-snapshots    Forces a check for missing  releases and updated snapshots on remote repositories
+
+$ mvn clean install -e -U
+```
+
+end
 
 #### 私有maven仓库 账号密码加密
 
@@ -587,6 +620,115 @@ bash-4.2# cat /root/.m2/settings.xml
 ```
 
 end
+
+### IntelliJ Idea
+
+##### 配置maven
+
+file  --> settings --> build,exection,Deployment --> Maven
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/intenlliJ-maven-1.jpg)
+
+添加maven仓库配置
+
+repositories 名为仓库，解决项目依赖的第三方jar包存放位置，以及多个项目公用第三方jar包。    
+
+pluginRepositories 名为插件仓库，存放maven插件的仓库，告诉项目您使用的插件应该去什么地方下载。
+
+```xml
+  <servers>
+	<server>
+      <id>湖北中烟依赖库</id>
+      <password>admin/hbzy@123</password>
+       <username>admin</username>
+    </server>
+ </servers>
+...
+	<profile>
+        <id>pipeline_auto_config_profile</id>
+        <repositories>
+            <repository>
+                <id>湖北中烟依赖库</id>
+                <releases>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </releases>
+                <snapshots>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </snapshots>
+                <url>http://10.156.23.49:8081/repository/maven-public/</url>
+            </repository>
+        </repositories>
+        <pluginRepositories>
+            <pluginRepository>
+                <id>湖北中烟依赖库</id>
+                <releases>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </releases>
+                <snapshots>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </snapshots>
+                <url>http://10.156.23.49:8081/repository/maven-public/</url>
+            </pluginRepository>
+        </pluginRepositories>
+        <activation>
+            <activeByDefault>true</activeByDefault>
+        </activation>
+    </profile>
+
+  </profiles>
+...
+```
+
+end
+
+##### 利用maven图形化界面调试
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/intenlliJ-maven-2.png)
+
+### 实际排错
+
+#### Not found class FQN
+
+如下，错误，必然是缺少TransmittableThreadLocal class 即缺少对应的jar
+
+java.lang.NoClassDefFoundError: com/alibaba/ttl/TransmittableThreadLocal
+
+解决:
+
+```xml
+<dependency>
+  <groupId>com.alibaba</groupId>
+  <artifactId>transmittable-thread-local</artifactId>
+  <version>2.12.0</version>
+</dependency>
+
+```
+
+end
+
+#### mvn  miss `file` parameters
+
+The parameters 'file' for goal org.apache.maven.plugins:maven-deploy-plugin:2.7:deploy-file are missing or invalid -> [Help 1]
+
+```bash
+$ mvn deploy:deploy-file -Dpackaging=pom  -DpomFile=nti-commons-1.0.1-SNAPSHOT.pom   -DFile=nti-commons-1.0.1-SNAPSHOT.pom -DrepositoryId=maven-snapshots -Durl=http://10.156.23.49:8081/repository/maven-snapshots/
+...
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-deploy-plugin:2.7:deploy-file (default-cli) on project standalone-pom: The parameters 'file' for goal org.apache.maven.plugins:maven-deploy-plugin:2.7:deploy-file are missing or invalid -> [Help 1]
+
+## 解决
+## 它提示了缺 file这个参数...我就换成 小写file了--
+$ mvn deploy:deploy-file -Dpackaging=pom  -DpomFile=nti-commons-1.0.1-SNAPSHOT.pom   -Dfile=nti-commons-1.0.1-SNAPSHOT.pom -DrepositoryId=maven-snapshots -Durl=http://10.156.23.49:8081/repository/maven-snapshots/
+
+
+```
+
+end
+
+
 
 ### 引用
 

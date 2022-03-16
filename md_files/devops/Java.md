@@ -21,11 +21,13 @@ java -Xmx100m com.acme.example.ListUsers fred joe bert
 
 而能够编译转化为class文件的，并不只有java一种。
 
+class文件的本质都是一组以 8 位字节为基础单位的2进制流。记住，是2进制。
+
 #### class FQN
 
 即 FQN必须包含`.` or `/` ？？？
 
-FQN fully qulified name，一个完整的java class（FQN fully qulified name）的名称应该如下所示，由于java版本的关系，Java命令行也允许使用/作为包名的分隔符。
+FQN fully qulified name，一个完整的java class（FQN fully qulified name）的名称应该如下所示，由于java版本的关系，Java命令行也允许使用`/`作为包名的分隔符。
 
 ```bash
 # packagename.packagename2.packagename3.ClassName
@@ -81,6 +83,8 @@ java -classpath /usr/local/acme/classes com.acme.example.Foon
 
 #### `java -cp`
 
+`-cp` <class search path of directories and zip/jar files>
+
 ```bash
 $ java -cp  /opt/nti-server/resources:/opt/nti-server/classes:/opt/nti-server/libs/* com.nti56.datatrans.DataTransApplication
 ```
@@ -98,6 +102,40 @@ java -jar 运行一个jar的时候并没有指定运行的mian类，但是也是
 1、在jar包中的META-INF/MANIFEST.MF中指定Main-Class，这样才能确定程序的入口在哪里；
 
 2、要能加载到依赖包。
+
+这是一个可以单独运行的jar
+
+```bash
+$ ls extract_jar/
+BOOT-INF  META-INF  org
+$ ls -l extract_jar/BOOT-INF/
+total 0
+drwxr-xr-x. 6 root root  200 Mar 16 04:07 classes
+drwxr-xr-x. 2 root root 6500 Mar 16 04:02 lib
+# 一排控制文件
+$ ls BOOT-INF/classes/
+application-dev.yml    application-local.yml  application-prod.yml   application.yml        com/                   db/                    mapper/                org/
+
+$ ls -l extract_jar/META-INF/
+total 8
+-rw-r--r--. 1 root root 350 Mar 16 04:02 MANIFEST.MF
+drwxr-xr-x. 3 root root  60 Mar 16 04:02 maven
+-rw-r--r--. 1 root root 922 Mar 16 04:02 spring-configuration-metadata.json
+# main class
+$ cat extract_jar/META-INF/MANIFEST.MF
+Manifest-Version: 1.0
+Archiver-Version: Plexus Archiver
+Built-By: root
+Start-Class: com.nti56.datatrans.DataTransApplication
+Spring-Boot-Classes: BOOT-INF/classes/
+Spring-Boot-Lib: BOOT-INF/lib/
+Spring-Boot-Version: 2.2.6.RELEASE
+Created-By: Apache Maven 3.3.9
+Build-Jdk: 1.8.0_222
+Main-Class: org.springframework.boot.loader.JarLauncher
+```
+
+end
 
 ##### 支持通配符
 
