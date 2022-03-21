@@ -823,9 +823,100 @@ end
 
 此处仅举例一个vlan配置情况，当业务网络规划多个vlan网络时，重复上述操作即可。此处配置需要牢记，管理网络信息在配置物理主机操作系统网卡时需要，业务网络信息在OpenStack搭建完成之后，创建虚拟机网络需要。
 
-### OpenvSwitch（OVS）+VLAN组网
+### OpenvSwitch（OVS）+VLAN组网：看
 
 https://www.1024sou.com/article/60783.html
+
+交换机上划分了三个 VLAN 区域：
+
+1. 管理网络，用于 OpenStack 节点之间的通信，假设 VLAN ID 范围为 50 - 99.
+2. 数据网络，用于虚拟机之间的通讯。由于Vlan模式下，租户建立的网络都具有独立的 Vlan ID，故需要将连接虚机的服务器的交换机端口设置为 Trunk 模式，并且设置所允许的 VLAN ID 范围，比如 100~300。
+3. 外部网络，用于连接外部网络。加上 VLAN ID 范围为 1000-1010。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/openstack-vlan-net.png)
+
+关于网段之间的路由：
+
+- 如果该物理交换机接到一个物理路由器并做相应的配置，则数据网络可以使用这个物理路由器，而不需要使用 Neutron 的虚拟路由器。
+- 如果不使用物理的路由器，可以在网络节点上配置虚拟路由器。
+
+控制节点配置
+
+```bash
+# vim /etc/neutron/plugins/ml2/ml2_conf.ini
+[ml2]
+type_drivers = flat,vlan
+tenant_network_types = vlan
+mechanism_drivers = openvswitch
+[ml2_type_flat]
+flat_networks = external
+[ml2_type_vlan]
+network_vlan_ranges = physnet1:100:300
+```
+
+网络节点控制
+
+```bash
+#为连接物理交换机的网卡 eth2 和 eth3 建立 OVS physical bridge，其中，eth2 用于数据网络，eth3 用于外部网络
+ovs-vsctl add-br br-eth2
+ovs-vsctl add-br br-ex
+ovs-vsctl add-port br-eth2 eth2
+ovs-vsctl add-port br-ex eth3
+ 
+# vim /etc/neutron/plugins/ml2/ml2_conf.ini
+[m12]
+type_drivers = flat,vlan
+tenant_network_types = vlan
+mechanism_drivers = openvswitch
+ 
+[ml2_type_flat]
+flat_networks = external
+[ml2_type_vlan]
+network_vlan_ranges = physnet1:100:300,external:1000:1010
+ 
+[ovs]
+bridge_mappings = physnet1:br-eth2,external:br-ex
+```
+
+计算节点控制
+
+```bash
+#为连接物理交换机的网卡 eth2 建立 OVS physical bridge
+ovs-vsctl add-br br-eth2
+ovs-vsctl add-port br-eth2 eth2
+ 
+# vim /etc/neutron/plugins/ml2/ml2_conf.ini
+[m12]
+type_drivers = vlan
+tenant_network_types = vlan
+mechanism_drivers = openvswitch
+[ml2_type_vlan]
+network_vlan_ranges = physnet1:100:300
+ 
+[ovs]
+bridge_mappings = physnet1:br-eth2
+```
+
+注意：
+
+- network_vlan_ranges 中的 VLAN ID 必须和物理交换机上的 VLAN ID 区间一致。
+- bridge_mappings 中所指定的 bridge 需要和在个节点上手工创建的 OVS bridge 一致。
+
+然后重启相应的 Neutron 服务。
+
+当 Neutron L2 Agent （OVS Agent 或者 Linux Bridge agent）在计算和网络节点上启动时，它会根据各种配置在节点上创建各种 bridge。以 OVS Agent 为例，
+
+（1）创建 intergration brige（默认是 br-int）；如果 enable_tunneling = true 的话，创建 tunnel bridge （默认是 br-tun）。
+
+（2）根据 bridge_mappings，配置每一个 VLAN 和 Flat 网络使用的 physical network interface 对应的预先创建的 OVS bridge。
+
+（3）所有虚机的 VIF 都是连接到 integration bridge。同一个虚拟网络上的 VM VIF 共享一个本地 VLAN （local VLAN）。Local VLAN ID 被映射到虚拟网络对应的物理网络的 segmentation_id。
+
+（4）对于 GRE 类型的虚拟网络，使用 LSI （Logical Switch identifier）来区分隧道（tunnel）内的租户网络流量（tenant traffic）。这个隧道的两端都是每个物理服务器上的 tunneling bridge。使用 Patch port 来将 br-int 和 br-tun 连接起来。
+
+（5）对于每一个 VLAN 或者 Flat 类型的网络，使用一个 veth 或者一个 patch port 对来连接 br-int 和物理网桥，以及增加 flow rules等。
+
+（6）最后，Neutron L2 Agent 启动后会运行一个RPC循环任务来处理 端口添加、删除和修改。管理员可以通过配置项 polling_interval 指定该 RPC 循环任务的执行间隔，默认为2秒。
 
 
 
@@ -835,7 +926,6 @@ https://www.1024sou.com/article/60783.html
 ### 引用
 
 0. https://support.huawei.com/enterprise/zh/doc/EDOC1100059351/a64bb5c0
-
 1. https://blog.csdn.net/weixin_52122271/article/details/112383249
 2. https://blog.51cto.com/u_13212728/2516078
 3. https://blog.51cto.com/centaurs1987/1437083
@@ -844,4 +934,5 @@ https://www.1024sou.com/article/60783.html
 3. https://blog.51cto.com/u_15127681/2818076
 3. https://blog.csdn.net/luuJa_IQ/article/details/104134312
 3. https://blog.51cto.com/sevenot/2133771
+3. https://www.cnblogs.com/luoahong/p/7214544.html
 
