@@ -1,5 +1,9 @@
 ## 存储、
 
+### 交换机
+
+交换机互联IP 和 交换机
+
 ### 看lun id 
 
 lsblk + ll /dev/disk
@@ -45,6 +49,8 @@ echo "1" > /sys/class/scsi_device/8\:0\:0\:15/device/delete
 ```
 
 使用命令`echo 1 > /sys/block/device-name/device/delete`删除磁盘，device-name以sd开头，比如sda、sdb；或者使用命令`echo 1 > /sys/class/scsi_device/h:c:t:l/device/delete`删除磁盘，h代表HBA卡号，c代表HBA卡channel，t代表SCSI target ID，i代表LUN ID。h:c:t:l这些信息可以通过`lsscsi`、`/lib/udev/scsi_id`，`multipath –l`，`ls –l  /dev/disk/by-*`方式查看。
+
+
 
 ### 操作：网络
 
