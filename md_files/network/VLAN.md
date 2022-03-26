@@ -59,7 +59,24 @@ SVI（switch virtual interface，交换虚拟接口），相当于把一个三�
 
 二层交换机 管理VLAN SVI口 大概算L2
 
+##### SVI从IP
 
+通过为三层交换机VLAN虚接口设置IP地址，从而实现不同VLAN间通信。VLAN创建后才能为此VLAN创建虚接口，近而为虚接口配置IP地址。H3C网络设备一个虚接口仅支持配置1个主IP地址，从IP地址数量视具体设备型号而定。VLAN虚接口从IP地址应用场景单一，主要是为了实现一个VLAN内多个网段互联、
+
+VLAN 10内存在两个网段，分别是192.168.61.0/24和192.168.62.0/24，现在要实现这两个网段内的主机相互通信，方法就是创建VLAN 10的虚接口，然后配置主IP地址192.168.61.1作为第一个网段的网关，配置从IP地址192.168.62.1作为第二个网段的网关。
+
+```bash
+[H3C]interfaceVlan-interface 10
+[H3C-Vlan-interface10]ipaddress 192.168.61.1 24
+[H3C-Vlan-interface10]ipaddress 192.168.62.1 24 sub
+```
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vlan-svi-subnet.jpg)
+
+对应到Openstack的Network和Subnet的概念类似，一个Network下可以创建多个subnet。
+
+* **Network** 对应一个唯一的VNI（类似二层vlan），network标识一个二层网络
+* **Subnet**   一个IP地址块，用于一个虚机的IP地址配置,每个subnet必须和network关联，一个network可以对应多个subnet（**相当于一个vlan下可以有主从地址**），subnet可选指定一个gateway。指定了gateway时，对应network、subnet中的IP才可以和外部网络互通。
 
 #### 交换机互联IP
 
