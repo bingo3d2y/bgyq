@@ -72,7 +72,7 @@ The *metadata service* provides a way for instances to retrieve instance-specifi
 - Neutron-metadata-agent：运行在网络节点，负责将接收到的获取 metadata 的请求转发给 nova-api-metadata。
 - Neutron-ns-metadata-proxy：由于虚拟机获取 metadata 的请求都是以路由和 DHCP 服务器作为网络出口，所以需要通过 neutron-ns-metadata-proxy 联通不同的网络命名空间，将请求在网络命名空间之间转发
 
-##### 大佬
+#### 大佬
 
 https://lk668.github.io/2020/10/12/2020-10-12-neutron-metadata/
 
@@ -97,7 +97,7 @@ OpenStack的Metadata服务主要是为虚拟机提供配置信息。在虚拟机
 5. neutron-metadata-agent服务将请求转发给nova-api-metadata。
    nova-api-metadata根据instance id回复metadata response。
 
-##### 基于`qrouter-<network-id>`命名空间的metadata服务实现
+#### 基于`qrouter-<network-id>`命名空间的metadata服务实现
 
 当openstack中的网络连接router时，neutron-metadata-agent通过`qrouter-<network-id>`网络命名空间来提供metadata服务。
 
@@ -188,7 +188,7 @@ listen listener
 
 实际上neutron-ns-metadata-proxy用过socket连接neutron-metadata-agent，然后在请求头部添加router-id，neutorn-metadata-agent就会根据请求的ipd地址和router-id获取到虚拟机的id。然后将请求发送给nova-api-metadata服务。
 
-##### 基于`qdhcp-<network-id>`命名空间的metadata服务实现
+#### 基于`qdhcp-<network-id>`命名空间的metadata服务实现
 
 如果网络没有绑定router，那么neutron通过`qdhcp-<network-id>`网络命名空间来处理metadata请求。
 
@@ -641,8 +641,6 @@ curl http://169.254.169.254/meta_file_path
 
 
 #### 配置
-
-
 
 ```bash
 [root@bbbbbbbbbbbb-17057 ~]# cat  /etc/kubernetes/kubelet.env
