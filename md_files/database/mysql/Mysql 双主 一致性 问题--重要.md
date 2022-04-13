@@ -12,7 +12,7 @@ MySQL最常见的集群架构，是**一主多从，主从同步，读写分离*
 
 举个栗子：
 
-![img](https://ask.qcloudimg.com/http-save/yehe-1300347/5glcyursg3.png?imageView2/2/w/1620)
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/multi-m-1.png)
 
 如上图所述，假设主库使用了auto increment来作为自增主键：
 
@@ -34,7 +34,7 @@ MySQL最常见的集群架构，是**一主多从，主从同步，读写分离*
 
 （2）设置相同的增长步长；
 
-![img](https://ask.qcloudimg.com/http-save/yehe-1300347/kls3f4pv4d.png?imageView2/2/w/1620)
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/multi-m-2.png)
 
 如上图所示：
 
@@ -46,7 +46,7 @@ MySQL最常见的集群架构，是**一主多从，主从同步，读写分离*
 
 （4）数据双向同步后，两个主库会包含全部数据；
 
-![img](https://ask.qcloudimg.com/http-save/yehe-1300347/rky6kr08hv.png?imageView2/2/w/1620)
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/multi-m-3.png)
 
 如上图所示，两个主库最终都将包含1/2/3/4/5/6/7/8所有数据，即使有一个主库挂了，另一个主库也能够保证写库的高可用。
 
@@ -54,11 +54,11 @@ MySQL最常见的集群架构，是**一主多从，主从同步，读写分离*
 
 答案是肯定的，应用程序使用统一的ID生成器，可以保证ID的生成不冲突。
 
-![img](https://ask.qcloudimg.com/http-save/yehe-1300347/2dcnzk3dbs.png?imageView2/2/w/1620)
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/multi-m-4.png)
 
 如上图所示，调用方插入数据时，带入全局唯一ID，而不依赖于数据库的auto increment，也能解决这个问题。 
 
-*画外音：如何生成全局唯一趋势递增的ID，不展开。*
+> 画外音：如何生成全局唯一趋势递增的ID，不展开。
 
 引发不一致的根本原因，是保证高可用的两个主库都对外提供服务，如果只有一个主库对外提供服务，**另一个主库平时不提供服务，仅仅在主库挂了的时候提供服务，能否消除上述数据不一致呢？**
 
@@ -66,7 +66,7 @@ MySQL最常见的集群架构，是**一主多从，主从同步，读写分离*
 
 使用虚IP+keepalived的方式保证数据库主库的高可用，平时只有一台主库提供服务，也可能出现数据不一致。
 
-![img](https://ask.qcloudimg.com/http-save/yehe-1300347/7tbhm50gz0.png?imageView2/2/w/1620)
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/multi-m-5.png)
 
 如上图所示：
 
@@ -78,7 +78,7 @@ MySQL最常见的集群架构，是**一主多从，主从同步，读写分离*
 
 切换过程中，由于虚IP没有变化，所以切换过程对调用方是透明的，但在极限的情况下，仍可能引发数据不一致。
 
-![img](https://ask.qcloudimg.com/http-save/yehe-1300347/2dftu4707k.jpeg?imageView2/2/w/1620)
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/multi-m-6.png)
 
 如上图所示：
 

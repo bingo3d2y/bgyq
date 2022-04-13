@@ -29,7 +29,7 @@ Underlay网络可以是二层也可以是三层网络。其中二层网络通常
 
 为了摆脱Underlay网络的种种限制，现在多采用网络虚拟化技术在Underlay网络之上创建虚拟的Overlay网络。
 
-在Overlay网络中，设备之间可以通过逻辑链路，按照需求完成互联形成Overlay拓扑。
+在Overlay网络中，设备之间可以通过逻辑链路，按照需求完成互联形成Overlay拓扑，只要VTEP建立的vxlan tunnel延时满足要求即可。。
 
 相互连接的Overlay设备之间建立隧道，数据包准备传输出去时，设备为数据包添加新的IP头部和隧道头部，并且被屏蔽掉内层的IP头部，数据包根据新的IP头部进行转发。当数据包传递到另一个设备后，外部的IP报头和隧道头将被丢弃，得到原始的数据包，在这个过程中Overlay网络并不感知Underlay网络。
 
@@ -145,7 +145,7 @@ NVGRE的主要支持者是Microsoft。不像VXLAN,NVGRE没有采用标准的传�
 
 VXLAN技术已经成为目前Overlay技术事实上的标准，得到了非常广泛的应用。
 
-VXLAN（Virtual eXtensible LAN，可扩展虚拟局域网络）是基于IP网络、采用“MAC in UDP”封装形式的二层VPN技术，具体封装的报文格式如图2所示。VXLAN可以基于已有的服务提供商或企业IP网络，为分散的物理站点提供二层互联功能，主要应用于数据中心网络。
+VXLAN（Virtual eXtensible LAN，可扩展虚拟局域网络）是基于IP网络、采用“MAC in UDP”封装形式的二层VPN技术。VXLAN可以基于已有的服务提供商或企业IP网络，为分散的物理站点提供二层互联功能，主要应用于数据中心网络。
 
 
 
@@ -159,7 +159,7 @@ Underlay网络正如其名，是Overlay网络的底层物理基础。
 
 为了实现Overlay的组网需求，Underlay对设备也有要求，比如要支持VxLAN或者NVGRE协议，但是当交换机设备不支持时怎么办，那就使用sdn/NFV哇，用软件模拟一个支持VxLAN或者NVGRE协议的网络设备。这么多虚拟设备怎么管理呢，就需要一个SDN/NFV 控制器了。
 
-在联系到新华三的产品：
+再联系到新华三的产品：
 
 * NFV：为SDN Overlay网络提供虚拟网络功能设备，然后还得使用交换或路由协议组网，实现高可用或者聚合等等
 

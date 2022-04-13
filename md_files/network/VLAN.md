@@ -31,6 +31,26 @@ SVI（switch virtual interface，交换虚拟接口），相当于把一个三�
 > vlanif是华为/华三的用法，思科直接就是interface vlan。
 >
 > 它们指的都是switch virtual interface
+>
+> ```bash
+> vlan  batch  10   20 
+> interface GigabitEthernet0/0/2  
+> port link-type access  
+> port default vlan 10
+> interface GigabitEthernet0/0/3 
+> port link-type access  
+> port default vlan 20
+> # 创建交换机虚拟接口(SVI) vlanif 10，属于三层接口，10 代表vlan 10 
+> interface Vlanif 10  
+> #  配置ip地址作为vlan 10 用户的网关
+> ip address 192.168.10.1 255.255.255.0
+> 
+> interface Vlanif 20 
+> ip address 192.168.20.1 255.255.255.0
+> 
+> ```
+>
+> end
 
 一个SVI只能关联到一个VLAN，SVI的编号即为所关联VLAN的VLAN ID即（vlanif作为网关必须要和vlan号相同）
 

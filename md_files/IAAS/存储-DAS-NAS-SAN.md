@@ -24,7 +24,7 @@ With an internal DAS, the physical space is limited. If a business application n
 
 存储和计算解耦，可以便捷的扩容磁盘，但是受到距离限制scsi和光纤不能无限拉长吧。
 
-For an external DAS arrangement, the storage disk array is still directly attached to a server without any network device. However, it interfaces with the host server with different protocols. The popular interface protocols are SCSI and Fibre Channel (FC). In comparison with internal DAS, external DAS overcomes the issues of physical space and distance between the host server and storage disk array. In addition, the storage array can be shared by more than one host server。
+For an external DAS arrangement, the storage disk array is still directly attached to a server without any network device. However, it interfaces with the host server with different protocols. **The popular interface protocols are SCSI and Fibre Channel (FC).** In comparison with internal DAS, external DAS overcomes the issues of physical space and distance between the host server and **storage disk array**. In addition, the storage array can be shared by more than one host server。
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/das-scsi-fc.jpg)
 
@@ -36,7 +36,7 @@ For an external DAS arrangement, the storage disk array is still directly attach
 
 Small Computer System Interface小型计算机系统接口，一种用于计算机和智能设备之间（硬盘、软驱、光驱、打印机、扫描仪等）系统级接口的独立处理器标准。 **SCSI是一种智能的通用接口标准。**
 
-> SCSI 很通用这就是它的优点，ceph很棒但是VMWare EXSi、Windows/Solaris操作系统是无法直接使用librbd，通用性差了。
+> SCSI 很通用这就是它的优点，ceph很棒但是VMWare EXSi、Windows/Solaris操作系统是无法直接使用librbd(librbd是基于librados的用户态接口库，而krbd是继承在GNU/Linux内核中的一个内核*模块*。)，通用性差了。
 
 主机带有一个SCSI控制器与SCSI设备相连，我们把控制SCSI进行数据存储的一端叫Initiator,而把SCSI设备（存储数据的）叫做Target
 
@@ -155,7 +155,7 @@ RAID 50由于在上层把多组RAID 5构成Stripe，性能比起单纯的RAID 5�
 
 storage network
 
-如果每个新的应用服务器都要有它自己的存储器。这样造成数据处理复杂，随着应用服务器的不断增加，网络系统效率会急剧下降。
+如果每个新的应用服务器都要有它自己的存储器，这样造成数据处理复杂，随着应用服务器的不断增加，网络系统效率会急剧下降。
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/storage-networks.jpg)
 
@@ -183,11 +183,9 @@ storage network
 
 ### SAN
 
-Storage Area Network-->存储区域网络，它首先是一个网络，而不是指存储设备，这个网络是专门用来给主机连接存储设备使用的，使用FC协议集，而不是TCP/IP。SAN网络与LAN网络相隔离，存储数据流不会占用业务网络带宽。
+Storage Area Network-->存储区域网络，它首先是一个网络，而不是指存储设备，这个网络是专门用来给主机连接存储设备使用的。SAN网络与LAN网络相隔离，存储数据流不会占用业务网络带宽。
 
 A SAN is block-based storage, leveraging a high-speed architecture that connects servers to their logical disk units (LUNs). A **LUN** is a range of blocks provisioned from a pool of shared storage and presented to the server as a logical disk. 
-
-SAN和服务器和客户机的数据通信通过SCSI命令而非TCP/IP，数据处理是“块级”（block level）。
 
 SAN解决方案是从基本功能剥离出存储功能，所以运行备份操作就无需考虑它们对网络总体性能的影响。
 
@@ -195,9 +193,9 @@ SAN解决方案是从基本功能剥离出存储功能，所以运行备份操�
 
 #### SAN类型/主要协议
 
-FC-SAN:
+FC-SAN: 利用光纤通道/FC协议上加载SCSI协议来达到可靠的块级数据传输
 
-IP-SAN: 
+IP-SAN: 使用TCP/IP通道加载SCSI协议
 
 FCIP：在IP上传输的FC数据帧 （FCIP：Entire Fibre Channel Frame Over IP）
 
@@ -384,7 +382,7 @@ https://www.szsandstone.com/technical/article/42.html
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/why iscsi.jpg)
 
-CEPH提供了对象、块、CEPHFS，块接口主要通过librbd或者KRBD支持，librbd是应用态接口，普通应用不能直接使用，krbd只能部署在linux高内核版本系统。但是企业环境里面常用到的VMWare EXSi、Windows/Solaris操作系统是无法直接使用librbd，而krbd也无法运行在这些系统中。所以一个标准的iSCSI接口就成为这些系统使用CEPH的最优方案
+CEPH提供了对象、块、CEPHFS，块接口主要通过librbd或者KRBD支持，librbd是应用态接口，普通应用不能直接使用，**krbd只能部署在linux高内核版本系统**。但是企业环境里面常用到的VMWare EXSi、Windows/Solaris操作系统是无法直接使用librbd，而krbd也无法运行在这些系统中。所以一个标准的iSCSI接口就成为这些系统使用CEPH的最优方案
 
 
 
