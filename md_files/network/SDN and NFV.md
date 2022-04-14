@@ -216,6 +216,56 @@ SDN通过标准的南向接口屏蔽了底层物理转发设备的差异，实�
 3.面向流量工程而设计，如实现路径计算，包括传送链路的带宽与开销等属性、链路状态和拓扑信息等。
 简单介绍几个以实现南向接口协议
 
+##### Open flow
+
+OpenFlow是第一个开放的南向接口协议，也是目前最流行的南向协议。它提出了控制与转发分离的架构，规定了SDN转发设备的基本组件和功能要求，以及与控制器通信的协议。
+
+OpenFlow协议规范定义了OpenFlow交换机、流表、OpenFlow通道以及OpenFlow交换协议。
+
+OpenFlow通道是控制器和交换机通信的通道。控制器可以通过该通道来配置和管理交换机、接收交换机发出的事件等。OpenFlow通道使用OpenFlow交换协议（OpenFlow switch protocol），通常基于TLS通信，但也支持直接TCP通信。
+
+OpenFlow交换协议支持三种类型的报文
+
+- controller-to-switch：控制器初始化并下发给交换机的报文，用于管理和查询交换机状态（如查询交换机特性，修改交换机流表、组表等）
+- asynchronous：交换机异步发送给控制器的报文，用于更新网络事件和交换机状态的改变（如新报文到达、交换机端口变化等）
+- symmetric：交换机或控制器发送，但无需对方许可，如Hello协商、Echo活性测试、Error错误报文等
+
+##### Netconf
+
+NETCONF是一个基于XML的交换机配置接口，用于替代CLI、SNMP等配置交换机。
+
+厂商是不是喜欢这个netconf协议--
+
+```bash
+            Layer                 Example
+       +-------------+      +-----------------+      +----------------+
+   (4) |   Content   |      |  Configuration  |      |  Notification  |
+       |             |      |      data       |      |      data      |
+       +-------------+      +-----------------+      +----------------+
+              |                       |                      |
+       +-------------+      +-----------------+              |
+   (3) | Operations  |      |  <edit-config>  |              |
+       |             |      |                 |              |
+       +-------------+      +-----------------+              |
+              |                       |                      |
+       +-------------+      +-----------------+      +----------------+
+   (2) |  Messages   |      |     <rpc>,      |      | <notification> |
+       |             |      |   <rpc-reply>   |      |                |
+       +-------------+      +-----------------+      +----------------+
+              |                       |                      |
+       +-------------+      +-----------------------------------------+
+   (1) |   Secure    |      |  SSH, TLS, BEEP/TLS, SOAP/HTTP/TLS, ... |
+       |  Transport  |      |                                         |
+       +-------------+      +-----------------------------------------+
+```
+
+- (1) 安全传输层，用于跟交换机安全通信，NETCONF并未规定具体使用哪种传输层协议，所以可以使用SSH、TLS、HTTP等各种协议
+- (2) 消息层，提供一种传输无关的消息封装格式，用于RPC通信
+- (3) 操作层，定义了一系列的RPC调用方法，并可以通过Capabilities来扩展
+- (4) 内容层，定义RPC调用的数据内容
+
+
+
 #### 华三 SDN应用：VCF
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/sdn应用.jpg)
@@ -568,3 +618,4 @@ SDN控制器通过NFV实现，底层为E9000/RH2288服务器，平台为SUSE Lin
 
 1. https://www.zhaohuabing.com/post/2019-10-26-what-can-service-mesh-learn-from-sdn/
 2. https://drobp.github.io/2019/08/03/%E5%8D%97%E5%90%91%E6%8E%A5%E5%8F%A3/
+2. https://www.wenjiangs.com/doc/zymsf3y8k

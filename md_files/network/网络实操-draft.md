@@ -191,7 +191,11 @@ cloudos平台部署mysql服务逻辑很简单，选择计算可用域和网络�
 
 结论：创建mysql时选择了错误的经典网络。
 
-### host连不上存储网络
+### host连不上存储网络: lldp
+
+lldp neighbor 查看
+
+
 
 现象：一个机器上rbd全部down了
 
@@ -215,5 +219,38 @@ cloudos平台部署mysql服务逻辑很简单，选择计算可用域和网络�
 2. 我怎么快速在交换机上定位port配置问题呢
 3. 我怎么快速对比计划配置和现存配置的区别呢
 
+### centos 添加静态路由
 
+问题：
+
+租管互通的管理节点无法访问一个业务网段的vm
+
+原因：
+
+租管互通的管理网节点node上部署了k8s，k8s service ip的路由覆盖了vm路由导致无法访问。
+
+```bash
+
+$ ip r
+10.13.50.128/25 dev bond0 proto kernel scope link src 
+...
+## k8s service 路由
+10.100.0.0/16 dev tun0
+10.240.0.0/12 dev tun0 scope link
+172.17.0.0/16 dev docker0 proto kernel scope link src 
+...
+```
+
+解决办法，添加某个租户业务网段所在的路由-
+
+创建`etc/sysconfig/network-scripts/route-eth0`文件，eth0根据实际网卡名称替换
+
+```bash
+# 在 `/etc/sysconfig/network-scripts/` 目录下创建名为 route-eth0 的文件
+vi /etc/sysconfig/network-scripts/route-eth0
+# 在此文件添加如下格式的内容
+10.100.180.0/24 via 172.100.50.1
+# 重启网络验证有效
+systemctl restart network
+```
 
