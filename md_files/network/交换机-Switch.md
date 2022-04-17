@@ -191,6 +191,14 @@ STP： Spanning Tree Protocol
 
  STP 技术在逻辑上将某些接口阻塞掉，防止形成环路。
 
+端口角色描述--
+
+根端口RP	能够转发数据，接收BPDU（存储最优的BPDU），通常不发BPDU
+
+指定端口DP	能够转发数据，接收BPDU（发送RP收到的最优BPDU），通常不收BPDU
+阻塞端口Block	不能转发数据，接收BPDU（存储RP以外的次级BPDU），不发BPDU
+Disable	不参与STP，不转发任何数据和BPDU
+
 STP 选举规则 – 802.1D
 
 在所有设备启动时，所有交换机都认为自己是跟，然后广播发送 BPDU，然后在 BPDU 中的某些参数选择一个真正的树根。

@@ -4,6 +4,23 @@ VxLAN打破了二层网络的局限性，通过L2-in-UDP使得只要三层路由
 
 传统网络架构以三层为主，主要是以控制南北数据流量为主（主要是服务器、虚拟机与外部通信），由于数据中心虚拟机的大规模使用，虚拟机迁移的特点以东西流量为主，在迁移后需要其IP地址、MAC地址等参数保持不变，如此则要求业务网络是一个二层网络。
 
+### vxlan 路由:优雅！
+
+包怎么封装的，包是无意识到呢，怎么vm发出的包就变成vxlan格式的了
+哈哈哈，所以vxlan必须和tunnel绑定！在通过vsi做网关，引流，封装，路由！完事，路由到vxlan gw解封装。
+
+**VxLAN必关联Tunnel隧道，Tunnel IP作为VxLAN声明的网段的网关，从而实现了overlay-vxlan网段的路由。**
+
+> 完全类似calico的`169.254.1.1`的作用！！！
+
+基于vxlan实现的overlay/vpc，各种内网IP怎么实现被规划的业务网段、管理网段和存储网段访问。
+
+访问vxlan网段路由:`10.100.180.0/24  direct 10.1.34.22 Vlan352`
+
+即，vxlan网段通过vsi将路由引导到Leaf/Spine上的vlanif，然后该交换机的其他端口与规划的存储、业务和管理网段配置互通。就可以实现vpc网段和underlay网络互通。
+
+
+
 ### What is VxLAN
 
 VXLAN（Virtual eXtensible Local Area Network，虚拟扩展局域网），是由IETF定义的NVO3（Network Virtualization over Layer 3）标准技术之一，采用L2 over L4（MAC-in-UDP）的报文封装模式，将二层报文用三层协议进行封装，可实现二层网络在三层范围内进行扩展，同时满足数据中心大二层虚拟迁移和多租户的需求。
@@ -97,8 +114,6 @@ VxLAN 则不然，VxLAN 可以在 L3 层网络上，透明地传输 L2 层数据
 ##### ECMP 配置实践
 
 https://lk668.github.io/2020/12/13/2020-12-13-ECMP/
-
-
 
 ### VxLAN: base
 
@@ -289,7 +304,38 @@ A2：如图所示，VM1和VM2分别属于VLAN 10和VLAN 20，且分别属于不�
 
 对于三层端口，CE交换机默认会对VXLAN报文进行解封装，因此默认情况会出现报文解封装后查不到下一步的转发表而在交换机内部丢弃；为避免此种情况出现，同样需要在对应的三层接口下配置port nvo3 mode access，保证报文的正常透传。
 
+### VxLAN协议没有控制平面
 
+#### flood-learn
+
+如果VTEP L2 Table中没有找到对应的Remote VTEP，那就要通过flood-learn来获得对端的VTEP。
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/VXLAB-flood-learn.png)
+为了更好的描述flood-learn，我们假设最左侧虚机已经知道目的MAC了（VTEP中的L2 Table已经老化，虚机中的ARP cache还没老化)。当最左侧虚机想ping最右侧虚机，ping包送到VTEP，因为在VTEP中找不到对应的Remote VTEP，VTEP会做如下操作：
+
+- 原始的Ethernet Frame被封装成VXLAN格式，VXLAN包的外层目的IP地址为组播地址。
+- VXLAN数据包被发送给组播内所有其他VTEP。
+
+其实这就是flood过程。因为组播内所有VTEP都是接收方，最右侧虚机可以受到组播的ping包。最右侧的VTEP首先从ping包中学习到了最左侧虚机的MAC地址，VXLAN ID和对应的VTEP。因为有了这些信息，当最右侧虚机返回时，会直接发送到最左侧VTEP。这样最左侧VTEP也能从返回包中学习到最右侧虚机的MAC地址，VXLAN ID和对应的VTEP，并记录在自己的L2 Table中，这就是learn过程。与交换机中的flood-learn不一样的是，交换机中记录的是对应的交换机端口和MAC的关系，这里记录的是Remote VTEP(IP Address)和MAC的关系。
+
+下次最左侧虚机想访问最右侧虚机，不需要再flood，直接查VTEP L2 Table就能找到对应的remote VTEP。
+
+所以从这里看出，VXLAN的转发信息，也是通过数据层的flood-learn获取，VXLAN不需要一个控制层也能工作，这与VPLS的情况很像啊！
+
+#### EVPN control plane
+
+EVPN，用作Overlay网络，例如VXLAN网络的控制层。VXLAN网络配合EVPN作为控制层，不仅能减少网络中的广播与组播数量，而且能带来EVPN作为控制层的一些优点。在一个VXLAN Fabric架构中，采用EVPN做控制层，借助功能完善的BGP（确切说是MP-BGP）协议，能够高效的连接不同的POD，甚至连接不同的site。所以从这个角度来说，EVPN作为VXLAN的控制层的应用，并不逊色与其作为L2 VPN的应用。
+
+VXLAN由RFC7348定义，在RFC中，只定义了数据层的行为，并没有指定VXLAN控制层。在VXLAN技术早期，通过数据层的来获取转发信息，在实现上较为简单，相应的技术门槛较低，有利于厂商实现VXLAN。但是随着网络规模的发展，完全依赖数据层做控制会造成网络中广播组播风暴，因此VXLAN也需要有一个控制层。
+
+SDN controller也可以作为VXLAN的控制层，OpenStack中普遍用SDN controller控制OpenVSwitch，VTEP直接通过OVSDB和OpenFlow流表进行管理。这些内容很有意思，功能也很强大，不过跟讨论vxlan control plane是两件事情，这里只讨论EVPN作为控制层的情况。
+
+EVPN作为NVO的控制层由IETF草案：draft-ietf-bess-evpn-overlay定义。EVPN的实现是参考了BGP/MPLS L3 VPN，那么EVPN作为VXLAN的控制层时，仍然采用相同的架构，只是架构的组成元素发生了改变。
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/VXLAN-control-plane.png)
+具体的变换包括了：
+
+- PE设备变成了VTEP，有的时候也称为NVE（Network Virtualization Endpoint）。相应的MP-BGP连接也建立在VTEP之间。
+- 数据层变成了VXLAN，VXLAN是在Underlay网络传输。
+- CE设备变成了Server，这里可以是Virtual Server也可以是Physical Server
 
 ### VLAN-VxLAN映射:tiger:
 
@@ -360,7 +406,19 @@ vni_ranges = 100:1000
 
 
 
+### VxLAN MTU
+
+为了保证VXLAN机制通信过程的正确性，rfc7348标准中规定，涉及到VXLAN通信的IP报文一律不允许分片，这就要求物理网络的链路层实现中必须提供足够大的MTU值，保证VXLAN报文的顺利传输，这一点可以理解为当前VXLAN技术的局限性。
+
+　　一般来说，虚拟机的默认MTU为1500 Bytes，也就是说原始以太网报文最大为1500字节。这个报文在经过VTEP时，会封装上50字节的新报文头（VXLAN头8字节+UDP头8字节+外部IP头20字节+外部MAC头14字节），这样一来，整个报文长度达到了1550字节。
+
+　　而现有的VTEP设备，一般在解封装VXLAN报文时，要求VXLAN报文不能被分片，否则无法正确解封装。这就要求VTEP之间的所有网络设备的MTU最小为 1550字节。
+
+　　如果中间设备的MTU值不方便进行更改，那么设置虚拟机的MTU值为1450，也可以暂时解决这个问题。
+
 ### VxLAN网关:fire:
+
+
 
 #### 二层网关
 
@@ -446,6 +504,77 @@ end
 
 end
 
+### VxLAN外部连接方式
+
+VRF： Virtual Routing and Forwarding
+
+VXLAN通过边界节点和外部连接，边界节点负责对VXLAN进行解封装，和外部交换路由，边界节点有两种选择。
+
+L2 and L3 gateway
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan&&non-vxlan.png)
+
+#### Spine作为边界：L3
+
+使用spine作为边界节点。在使用spine作为边界节点时，为了使spine上路由的一致性，建议所有的spine都和外部连接。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxaln-spine-border.png)
+
+
+
+#### Leaf作为边界：L2
+
+使用专门的leaf作为边界节点。这种情况下，对于南北流量，增加了额外的一跳；但也使得spine不用承担VTEP功能，减轻VTEP负担。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan-leaf-border.png)
+
+### VxLAN 3层外部连接
+
+VXLAN边界节点对出方向的VXLAN流量进行解封装，同时保持数据包中关于VRF,或租户信息。可使用的方法包括VRF Lite , LISP, MPLS L3 VPN。
+
+#### 全互联模型和U型模型
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan-L3-mesh.png)
+
+该模型中，每个边界节点和所有外部设备互联，保证网络具有足够的弹性；边界节点之间不需要线互联，直接和外部交换路由，无需在两台边界设备之间进行路由同步。全互联模型不会产生流量黑洞问题。
+另一种可选的模型时U形连接。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan-L3-U.png)
+
+该模型中，每台边界节点和一台外部设备相连，两台边界节点相连
+
+#### VRF Lite/Inter-AS Option A
+
+在确定了可选的连接方式后，VXLAN外部连接需要考虑的时，VXLAN内部和外部之间如何传递路由。最简单的两个方式就是VRF Lite 或Inter-AS Option A 。
+如图：
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan-L3-VRF.png)
+
+
+
+实现方式如下：
+
+* 使用option A的方式，在edge router 上为每个用户创建VRF,对应border leaf上的客户。
+* border 和edge router 之间路由交换可以在vrf内运行路由协议，可以使用静态，或动态的路由协议。最简便的是使用eBGP路由协议，在border leaf上就不需要进行重分布；
+* 如果使用其他路由协议，在将IBGP重分布到IGP时，需要进行过滤；只需要将IBGP 属性为internal 的路由通告到IGP中，同时进行路由汇总，尽量避免/32路由通告到IGP中。
+* 在border leaf 和edge router 可以部署BFD加快故障检测和倒换
+
+#### MPLS L3VPN:star2:
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan-mpls-l3vpn.png)
+
+该方式下，将border leaf当作MPLS PE，将eVNP路由重新生成L3VNP的路由，通过BGP eVNP传递给远端的PE，在通告给远端时，需要抑制主机路由；从远端PE收到VNPV4路由时，将VNPV4路由重新生成L2VNP路由。
+
+### VxLAN 2层外部连接
+
+二层连接使用以下拓扑，外部网络通过vPC连接到border-leaf。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vxlan-l2-gw.png)
+
+由于BPDU报文不会通过VXLAN传播，且VTEP之间是二层互通，因此避免在让VXLAN fabric参与STP的计算，部署时，将VTEP当作STP的边缘设备。
+
+图中，VPC应该表示一个数据中心中包含基础服务的vpc，如DNS、DHCP
+
 ### VxLAN控制平面
 
 https://www.it8045.com/2103.html
@@ -467,6 +596,8 @@ VxLAN 的控制平面主要有种模式：松散控制模式与集中控制模�
 在 VxLAN 的集中控制模式下，VxLAN 的控制平面是基于 SDN控制器的，可采用软硬件结合的 VxLAN 网络方案，即 VTEP 设备可以由硬件或软件交换机来担任。VTEP 之间如何建立隧道，流量在哪个隧道中进行转发由控制器决定。控制器通过通过 OpenFlow、Netconf、OVSDB 来对软硬件网元进行控制。数据平面支持二三层的转发，SDN控制器则同时需要负责下发配置、服务策略和控制流表。
 
 ### VxLAN隧道
+
+Nested between Layer 2 and Layer 3 (L2), VXLAN allows users to overlay Layer 2 (L2) networks over Layer 3 (L3).
 
 #### 隧道转发模式
 
@@ -535,9 +666,68 @@ vxlan vni 5000  //设置bd10对应的vni为5000
 
 end
 
+### VxLAN and VPN
+
+VPN tunneling is the backbone of VXLAN, which provides a communication protocol connecting data centers from Layer 2 ports to Layer 3 ports. A VXLAN overlay network sits on top of the physical network and allows users to use a Virtual Private Network.
+
+VxLAN依靠VPN Tunnel，但是隧道封装协议是vxlan协议。
+
+Basically VPN is used to connect between two sites, so that the communication between those sites will be secured. VPN uses either ESP or AH header to encapsulate the packet. If you use AH, then you provided only Authentication, when you use ESP, you provide both Authentication as well as Integrity.
+
+Speaking about VXLAN, it is another encapsulation mechanism which uses UDP header. So basically an outer header is added with UDP encapsulation. VXLAN doesn't encrypt the data.
 
 
 
+### VxLAN and SDN
+
+VXLAN in SDN is used to automate configuration.
+
+EVPN也可以做VXLAN的控制平面哦，替代手工配置VxLAN Tunnel！
+
+vxlan的配置挺麻烦的，而且不同厂商的还不一样，如下：
+
+```bash
+## 华为配置vxlan
+[*HUAWEI]bridge-domain 20
+[*HUAWEI-bd20]vxlan vni 200
+[*HUAWEI-bd20]commit 
+[~HUAWEI-bd20]quit
+[~HUAWEI]display vxlan vni
+Number of vxlan vni : 2
+VNI            BD-ID            State   
+---------------------------------------
+200            20               down        
+1001           10               down   
+
+## 华三配置vxlan
+[H3C]l2vpn enable
+[H3C]vsi 20
+[H3C-vsi-20]vx
+[H3C-vsi-20]vxlan 2020
+[H3C-vsi-20-vxlan-2020]quit
+[H3C-vsi-20]quit
+# 显示vxlan
+[H3C]display vxlan tunnel
+Total number of VXLANs: 1
+VXLAN ID: 2020, VSI name: 20
+```
+
+使用vxlan网络时，呈现给用户时，应该屏蔽掉这些细节。
+
+### VXLAN and VPN
+
+Virtual Extensible LAN (VXLAN) uses MAC-in-UDP encapsulation. It is a type of Network Virtualization over Layer 3 (NVO3) technology. Key reasons for selecting VXLAN can be:
+
+* Low requirements on the physical network: Virtual systems can be built on top of any physical network.
+* Low configuration complexity: SDN is used to automate configuration.
+* Low networking requirements: Not all devices on the entire network are required to support VXLAN
+
+**MPLS VPN** uses L3 on underlay network while VXLAN can be built on top of any layer of the physical network. Moreover, in MPLS VPN carrier grade technical skills are required to configure thorough CLI while VXLAN in SDN is used to automate configuration.
+And MPLS VPN is supported on E2E links while Only VTEPs are required to support VXLAN. VXLAN does not need to be supported on E2E links.
+
+I hope it clarifies it for you. In case of any further clarification, please do comment.
+
+Thank you.
 
 ### 引用
 
