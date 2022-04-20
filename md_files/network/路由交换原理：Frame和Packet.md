@@ -319,9 +319,7 @@ PING 10.20.1.3 (10.20.1.3) 56(84) bytes of data.
 
 通过这个实验，我们可以很清晰地掌握 Calico 网络的数据转发流程，首先需要给所有的 ns 配置一条特殊的路由，并利用 veth 的代理 ARP 功能让 ns 出来的所有转发都变成三层路由转发，然后再利用主机的路由进行转发。这种方式不仅实现了同主机的二三层转发，也能实现跨主机的转发。
 
-#### 默认网关和默认路由（卧槽,6）
-
-这两家伙不一样，666
+#### 默认网关和默认路由:fire:
 
 default-gateway for layer2
 
@@ -339,7 +337,7 @@ if ip routing is disabled ip route 0.0.0.0 0.0.0.0 is not effective
 
 
 
-0.0 下面是思科的牛逼解释
+下面是思科的牛逼解释
 
 Default route which is also known as the gateway of last resort, is used in forwarding packets whose destination address does not match any route in the routing table. In IPv4 the CIDR notation for a default route is 0.0.0.0/0 and ::/0 in IPv6. Now since the both the host/network portion and the prefix length is zero a default route is the shortest possible match. In previous lessons in which we discussed basics of IP Routing we know that a router when performing a route lookup will select a route with longest possible match based on CIDR specifications, however if packet does not match any route in the routing table it will match a default route, the shortest possible route, if it exists in the routing table. **A default route is very useful in network where learning all the more specific routes is not desirable such as in case of stub networks.** A default is immensely useful when a router is connected to the Internet as without a default route the router must have the routing entry for all networks on the Internet which are in numbers of several hundred thousand, however with single route configured as the default the router will only need to know the destinations internal to the administrative domain and will forward IP packets for any other address towards the Internet using the default route.
 
@@ -412,9 +410,37 @@ A的网关转发这个包的时候目的MAC写的是路由表中下一跳next ho
 
 
 
+#### 路由器工作原理:honeybee:
+
+传统的路由决策，路由器需要对网络数据包进行解包，再根据目的IP地址计算归属的FEC。
+
+传统的路由网络里面，当一个（无状态的）网络层协议数据包（例如IP协议报文）在路由器之间游荡时，每个路由器都是独立的对这个数据包做出路由决策。**路由决策就是路由器决定数据包如何路由转发的过程。**在这里指，每个路由器都需要分析包头，根据网络协议层的数据进行运算，再基于这些分析和运算，独立的为数据包选择下一跳（next hop），最后通过next hop将数据包发送出去。以IP协议报文为例，路由决策是基于目的IP地址，路由器根据目的IP地址，选择路由条目，再做转发。路由决策可以认为是由两部分组成：
+
+- 分类，将特定的数据包归属为一个等价转发类（Forwarding Equivalence Classes，FECs）
+- 查找，查找FEC对应的next hop
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/路由器-route-machine-1.png)
+
+对于同一个路由器来说，同一个FEC必然对应同一个next hop，那么属于同一个FEC的所有网络数据包必然会走同一条路径转发出去。（注，在多链路负载均衡的情况下，一个FEC也可能对应一组next hop，但是逻辑上还是能看成是一个next hop，因为殊途同归！)
+
+具体到IP协议报文，当多个IP协议报文的目的地址都对应路由器的一条路由，且这条路由是所有路由里面最长匹配（longest match）的路由，那么对于这个路由器来说，就会认为这两个IP协议报文属于一个FEC。因此，这两个数据包就会走同一条路径出这个路由器。这就是我们最常见到的路由转发。
+
+
+
+需要注意的是，这里的FEC是针对一个路由器的，而不是全局的。举个例子，目的地址为192.168.31.1和192.168.31.100的两个IP协议报文，第一个路由器具有192.168.31.0/24这条路由，那么在第一个路由器它们属于同一个FEC，都会被转发到第二个路由器。第二个路由器具有192.168.31.0/26和192.168.31.0/24两条路由，并且两条路由的next hop不一样。因为192.168.31.0/26能更精确的匹配192.168.31.1，所以192.168.31.1匹配第一条路由，而192.168.31.100匹配第二条路由，最终，这两个IP协议报文在第二个路由器被认为是不同的FEC，从不同的路径出去。这就是每个路由器都需要独立的做路由决策的原因之一。
+
+路由器的工作原理如下图所示：
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/路由器-route-machine-2.png)
+
+
+由于每个路由器都需要独立的路由决策（虽然会有这样那样的缓存机制加速决策），而**路由器的收发队列一旦满了，就会丢包。所以在一个高流量，高容量的网络里面，无疑对每个路由器的要求都很高（否则就会丢包了！）**
+
+
+
 #### 路由与多网卡环境：包转发流程
 
-== 一个机器上只能有一个默认路由规则`ip r add default IP dev if_name` ==
+ **一个机器上只能有一个默认路由规则**`ip r add default IP dev if_name` 
 
 but ,`/etc/sysconfig/network-scripts/ifcfg-bond2` 网卡设备配置文件中在`GATEWAY` 可以指定网卡的网关，此外还可以通过`ip route add default` 再加一个真正的全局默认网关（only one ）--
 

@@ -69,3 +69,26 @@ KUBELET_CLOUDPROVIDER="--cloud-provider=openstack --cloud-config=/etc/kubernetes
 
 end
 
+### 批量情况k8s node pod
+
+1、 先清理三个节点的内存缓存 
+
+sync 下刷内存
+
+echo 3 > /proc/sys/vm/drop_caches 释放缓存
+
+
+
+2、 清理状态为 extied和create的容器  三个节点都清理下 
+
+docker rm $(docker ps -a |grep "Exited\|Create" |awk '{print $1}')
+
+ docker rmi $(docker images -q) -f
+
+3、 再强制删除异常的pod
+
+kubectl delete pod 容器名称 --force --grace-period=0
+
+ 
+
+如下面清理unknown容器

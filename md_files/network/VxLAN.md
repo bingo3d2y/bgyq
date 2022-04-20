@@ -167,6 +167,12 @@ VXLAN 网络架构的组件有：
 
 6. **VSI**：Virtual Switch Instance，虚拟交换实例，VTEP 上为一个 VXLAN 提供二层交换服务的虚拟交换实例。VXLAN ID 和VSI 是一对一的关系，所以每增加一个VXLAN ID的二层网络都要有唯一的VSI实例与之对应。
 
+#### 控制平面 control plane
+
+所谓控制层面，就是路由数据怎么传递的。
+
+例如，CE2里面是怎么就有了CE1网络的路由，并且能正常工作。
+
 
 
 #### 实现VxLAN-Overlay报文模式
@@ -415,6 +421,52 @@ vni_ranges = 100:1000
 　　而现有的VTEP设备，一般在解封装VXLAN报文时，要求VXLAN报文不能被分片，否则无法正确解封装。这就要求VTEP之间的所有网络设备的MTU最小为 1550字节。
 
 　　如果中间设备的MTU值不方便进行更改，那么设置虚拟机的MTU值为1450，也可以暂时解决这个问题。
+
+
+
+### 创建vxlan vni
+
+华三使用vsi 10 
+
+```bash
+$ system-view
+$ l2vpn enable
+# 创建vsi并进入vsi视图
+$ vsi vsi-name
+$ vxlan vxlan-id
+# 配置vxlan与vxlan隧道关联
+$ tunnel tunnel-number
+```
+
+华为使用bridge-domain 10
+
+1. 执行命令**system-view**，进入系统视图。
+
+2. 执行命令**bridge-domain** *bd-id*，进入BD视图。
+
+3. 执行命令**vxlan vni** *vni-id*，配置BD所对应的VXLAN的VNI。
+
+   缺省情况下，没有配置BD所对应的VXLAN的VNI。
+
+4. 执行命令**quit**，退出BD视图，返回到系统视图。
+
+5. 执行命令**interface nve** *nve-number*，创建NVE接口，并进入NVE接口视图。
+
+6. 执行命令**source** *ip-address*，配置VXLAN隧道源端VTEP的IP地址。
+
+   缺省情况下，VXLAN隧道源端VTEP没有配置IP地址。
+
+7. 执行命令**vni** *vni-id* **head-end peer-list** *ip-address* &<1-10>，配置头端复制列表。
+
+   缺省情况下，没有配置VNI头端复制列表。
+
+   头端是指VXLAN隧道的入节点，复制是指当VXLAN隧道的入节点收到一份BUM报文后，需要将其复制多份并发送给列表中的所有VTEP。头端复制列表就是用于指导VXLAN隧道的入节点进行BUM报文复制和发送的远端VTEP的IP地址列表。
+
+8. 执行命令**quit**，退出NVE接口视图，返回到系统视图
+
+end
+
+
 
 ### VxLAN网关:fire:
 
