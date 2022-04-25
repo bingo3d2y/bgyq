@@ -484,7 +484,7 @@ via BGP would be immediately correct.
 
 Basically, it's a simple overlay network.
 
-#### rr实际配置
+#### rr实际配置：外部和svcIP互通
 
 RR 模式可以实现pod ip 和 svc ip 被集群外访问。
 
@@ -806,7 +806,7 @@ Date: Sun, 29 Dec 2019 08:59:33 GMT
 Content-Type: text/plain
 Connection: keep-alive
 
-## 添加node-1 或 node-2 都行
+## 添加node-1 或 node-2 即7和8两个iP都行
 [root@cs1-harbor-1 ~]# ip r add 10.96.0.0/12 via 21.49.22.8
 [root@cs1-harbor-1 ~]# curl  10.102.102.13:8080 -I
 HTTP/1.1 200 OK
