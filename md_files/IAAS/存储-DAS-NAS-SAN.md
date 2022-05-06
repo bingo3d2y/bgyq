@@ -151,6 +151,175 @@ RAID 50由于在上层把多组RAID 5构成Stripe，性能比起单纯的RAID 5�
 
  end
 
+### WWID and UUID
+
+SCSI标准中，每个SCSI磁盘都会有一个WWID，与网卡的MAC地址很相似，其在全世界唯一的。磁盘的WWID永久不变，Linux上可以通过如下方法查看SCSI磁盘WWID及其相应的磁盘标识。
+
+* 查看/dev/disk/by-id目录
+
+  ```bash
+  $  ll /dev/disk/by-id/
+  ```
+
+* scsi_id 命令
+
+  ```bash
+  $ scsi_id -g /dev/sda
+  $ scsi_id --whitelist /dev/sda 
+  ```
+
+UUID是创建文件系统时生成的，用于标记该文件系统，与WWID类似，UUID也是唯一的。因此，UUID用来标识SCSI磁盘，也能保证磁盘路径的不变。Linux中/dev/disk/by-uuid目录下，包含所有已创建文件系统的磁盘设备及其UUID间的对应关系。
+
+```bash
+$ ll /dev/disk/by-uuid/
+
+lrwxrwxrwx 1 root root 10 Aug  3 18:26 7054388f-d4c1-4070-8c09-1cd01d5c110d -> ../../sda1
+lrwxrwxrwx 1 root root 10 Aug  3 18:26 d2dc2acf-621a-43b6-9a51-45165d9f4e97 -> ../../dm-1
+lrwxrwxrwx 1 root root 10 Aug  3 18:26 d8cd03b7-58cf-4e11-98d7-938c80f7d4d1 -> ../../dm-0
+```
+
+为了实现Linux系统重启后系统上的目录和文件系统间的绑定关系不变，/etc/fstab文件中应使用uuid进行标识，因为/etc/fstab中记录的是文件系统信息，因此，其中只能使用UUID而不能使用WWID，例如：
+
+```bash
+$ cat /etc/fstab
+
+/dev/mapper/vg_rac1-lv_root /                       ext4    defaults        1 1
+UUID=7054388f-d4c1-4070-8c09-1cd01d5c110d /boot                   ext4    defaults        1 2
+/dev/mapper/vg_rac1-lv_swap swap                    swap    defaults        0 0
+tmpfs                   /dev/shm                tmpfs   defaults        0 0
+devpts                  /dev/pts                devpts  gid=5,mode=620  0 0
+sysfs                   /sys                    sysfs   defaults        0 0
+proc                    /proc                   proc    defaults        0 0
+```
+
+UUID进行文件系统挂载时，可通过blkid查看分区UUID，通过UUID挂载文件系统时，需指定-t文件系统类型。
+
+### multipath
+
+服务器端，同一个LUN或WWID或UUID通常对应多个路径，这为服务器访问同一设备提供了多个路径选择，即可提高磁盘设备访问的性能，同时也提供了磁盘设备的高可用性。一般地，一个存储LUN配置路径数的算法为
+LUN绑定某台服务器的HBA数*存储机头数*光纤交换机数
+通常情况下，存储的一个LUN会绑定服务器的两块HBA，而同一存储服务器里有两台机头，为了冗余也会配备两台交换机，这样，一个LUN的访问路径数为：2\*2\*2=8
+因此，多路径映射后，/dev目录下会有8个/dev/sd*磁盘设备对应同一WWID，对于Lunix自带的multipath，可以通过如下命令查看多路径：
+
+```bash
+$ multipath -ll
+mpath0 (360060e80058e980000008e9800000007)
+
+[size=20 GB][features="0"][hwhandler="0"]
+
+\_ round-robin 0 [prio=1][active]
+
+\_ 3:0:0:7 sdaa 65:160 [active][ready]
+
+\_ round-robin 0 [prio=1][enabled]
+
+\_ 4:0:0:7 sdas 66:192 [active][ready]
+
+\_ round-robin 0 [prio=1][enabled]
+
+\_ 5:0:0:7 sdbk 67:224 [active][ready]
+
+\_ round-robin 0 [prio=1][enabled]
+
+\_ 2:0:0:7 sdi 8:128 [active][ready]
+
+这说明，已由四条链路sdaa/sdas/sdbk/sdi复合成一条链路，设备名为mpath0。
+```
+
+#### 配置维护
+
+```bash
+# 安装配置
+$ modprobe dm-multipath
+$ service multipathd start
+$ multipath -v0
+```
+
+配置文件只有一个：/etc/multipath.conf 。配置前，请用fdisk -l 确认已可正确识别盘柜的所有LUN，HDS支持多链路负载均衡，因此每条链路都是正常的；而如果是类似EMC CX300这样仅支持负载均衡的设备，则冗余的链路会出现I/O Error的错误。
+
+默认情况下，multipath会把所有设备都加入到黑名单（devnode "*"），也就是禁止使用。我们首先需要取消该设置，把配置文件修改为类似下面的内容：
+
+```bash
+devnode_blacklist {
+
+#devnode "*"
+
+devnode "hda"
+
+wwid 3600508e000000000dc7200032e08af0b
+
+}
+```
+
+这里禁止使用hda，也就是光驱。另外，还限制使用本地的sda设备,这个wwid，可通过下面的命令获得
+
+```bash
+# scsi_id -g -u -s /block/sda
+3600508e000000000dc7200032e08af0b
+```
+
+使用错误的`""`导致，挂载失败
+
+```bash
+[root@cloudos02 ~]# diff -u /etc/multipath.conf /etc/multipath.conf.56
+--- /etc/multipath.conf 2022-05-06 17:34:47.265091695 +0800
++++ /etc/multipath.conf.56      2022-05-06 17:34:00.655984526 +0800
+@@ -30,8 +30,8 @@
+ wwid "3600c0ff000293a07a782626201000000"
+ wwid "3600c0ff000293a072629696201000000"
+ wwid "3600c0ff000293a070d29696201000000"
+-wwid "3600c0ff000293a07b343756201000000"
+-wwid "3600c0ff000293a07d443756201000000"
+-wwid "3600c0ff000293a07f643756201000000"
+-wwid "3600c0ff000293a077d43756201000000"
++wwid “3600c0ff000293a07b343756201000000”
++wwid “3600c0ff000293a07d443756201000000”
++wwid “3600c0ff000293a07f643756201000000”
++wwid “3600c0ff000293a077d43756201000000”
+ }
+ 
+ [root@cloudos02 ~]# cat /etc/multipath.conf
+defaults {
+  user_friendly_names   "yes"
+  path_checker "tur"
+  prio "const"
+  path_grouping_policy "group_by_prio"
+  no_path_retry 25
+  max_fds "max"
+  failback "immediate"
+}
+blacklist {
+    wwid "3600605b01133c01029e93d0f091e1935"
+    wwid "3600605b01133c01029e9488e081c1ab7"
+
+}
+blacklist_exceptions {
+    property "(ID_SCSI|ID_WWN)"
+
+wwid "3600c0ff000293a07bbe15e6201000000"
+wwid "3600c0ff000293a071ae15e6201000000"
+wwid "3600c0ff000293a07f1e05e6201000000"
+wwid "3600c0ff000293a0759e05e6201000000"
+wwid "3600c0ff000293a072be05e6201000000"
+wwid "3600c0ff000293a07a7e05e6201000000"
+wwid "3600c0ff000293a0793e25e6201000000"
+wwid "3600c0ff000293a0760e15e6201000000"
+wwid "3600c0ff000293a073fe15e6201000000"
+wwid "3600c0ff000293a07b5e25e6201000000"
+wwid "3600c0ff000293a071282626201000000"
+wwid "3600c0ff000293a075d82626201000000"
+wwid "3600c0ff000293a07a782626201000000"
+wwid "3600c0ff000293a072629696201000000"
+wwid "3600c0ff000293a070d29696201000000"
+wwid "3600c0ff000293a07b343756201000000"
+wwid "3600c0ff000293a07d443756201000000"
+wwid "3600c0ff000293a07f643756201000000"
+wwid "3600c0ff000293a077d43756201000000"
+}
+```
+
+end
+
 ### 存储网络
 
 storage network
@@ -248,6 +417,8 @@ When a virtual machine interacts with its virtual disk stored on a SAN, the foll
    1. Packages the I/O request according to the rules of the FC protocol.
    2. Transmits the request to the SAN.
 6. Depending on a port the HBA uses to connect to the fabric, one of the SAN switches receives the request. The switch routes the request to the appropriate storage device.
+
+
 
 #### iSCSI:star:
 
@@ -654,3 +825,4 @@ The iSCSI Gateway presents a Highly Available (HA) iSCSI target that exports RAD
 2. https://www.zhihu.com/question/20131784/answer/90235520
 2. https://blog.51cto.com/u_11107124/1884637
 2. https://blog.csdn.net/Jacky_Feng/article/details/121579494
+2. https://blog.csdn.net/tuning_optmization/article/details/107759698

@@ -23,9 +23,13 @@
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/input-placeholder-css.jpg)
 
-#### js渲染的\<input>:happy:
+#### CSR js渲染的\<input>:happy:
 
 这是我困惑好久的东西了哈哈哈，其实实现挺简单的，如下基于vue的实现
+
+困惑点：页面-->Inspect 看到的input没有任何值的属性，但是页面上input框是填充了某个后端接口的返回值的。
+
+原因：Inspect看到的是js渲染后的了~~~ Sources看到的input是有提示的
 
 ```html
     <div id="test">
@@ -53,6 +57,10 @@ Vue.createApp(Test).mount('#test')
 就是如下的效果
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/ssr-input.png)
+
+但是页面的Sources还是显示了这个input绑定了v-mode
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/CSR-SITE-ALLOW-JS-2.png)
 
 ### DOM
 
@@ -144,26 +152,14 @@ Control+F或Command+ F（Mac）
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/chrome-devtool-1.jpg)
 
-
-
-### 动态渲染？？？
-
-就酱：https://www.cxyzjd.com/article/lyclyc_/109962598
-
-#### 怎么输入input的
-
-js代码--
-
-![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/动态渲染.jpg)
-
-是谁从接口里面把值渲染到input框的
-
-定位方法：
+前端接口定位方法：
 
 * 先查到提供数据的接口，再去前端源代码那里搜索那里调用的这个后端接口，从而看它的操作逻辑
 * 选择页面一个固定文字或者label去代码里搜索
 
+### 动态渲染/CSR
 
+就酱：https://www.cxyzjd.com/article/lyclyc_/109962598
 
 #### AngularJS ng-model
 

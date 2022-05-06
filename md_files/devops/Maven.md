@@ -10,6 +10,17 @@ java启动参数共分为三类：
 
 其三是**非Stable参数**（**-XX**），此类参数各个jvm实现会有所不同，将来可能会随时取消，需要慎重使用；
 
+#### 获取一个应用的全部maven依赖
+
+1. docker run --rm -it maven bash
+2. git clone http_url_git
+3. mvn package -Dmaven.test.skip=true 
+4. cd /root/.m2/repository/ && tar zcvf /tmp/repo.tar repository/*
+
+网上给的这个命令不太靠谱的样子：
+
+`mvn dependency:copy-dependencies`
+
 
 
 #### Maven仓库优先级配置
