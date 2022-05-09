@@ -16,7 +16,32 @@ why do you use Calico？
 2. RR and mesh-mesh
 3. network policy
 
+### calico网段不够用:star:
 
+#### 问题：
+
+calico初始化说，子网划分为`26`，k8s节点数列多了以后，导致部分node分不到网段。
+
+#### 解决：
+
+##### ipam加个网段
+
+`192.168.1.0/26`分为了，在加个新的网段给calico比如`192.168.2.0/26`
+
+##### 复用calico已有网段
+
+网段被主机分完了但是ip没使用完，因为一个node上不会有那么多pod
+
+骚操作，通过路由明细实现，所以主机上会有访问pod的32位路由
+
+```bash
+pod_ip_1/32 via host_1_IP
+pod_ip_2/32 via host_2_IP
+```
+
+calico的felix组件动态维护这些pod路由。
+
+核心思想应该是，将路由信息元数据再加个host的属性，实现不同node复用用一个网段
 
 ### calico 架构
 

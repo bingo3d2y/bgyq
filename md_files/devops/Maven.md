@@ -1,5 +1,11 @@
 ### Maven
 
+#### 小坑
+
+docker maven latest镜像构建编译，gayhub sprint-boot-demo无法运行，其他环境maven构建的可用运行。
+
+草
+
 #### Java参数
 
 java启动参数共分为三类：
@@ -10,7 +16,57 @@ java启动参数共分为三类：
 
 其三是**非Stable参数**（**-XX**），此类参数各个jvm实现会有所不同，将来可能会随时取消，需要慎重使用；
 
-#### 获取一个应用的全部maven依赖
+#### no main manifest attribute
+
+java 没指定main class入口
+
+```bash
+$ java -jar target/HelloWorld-1.0-SNAPSHOT.jar
+no main manifest attribute, in target/HelloWorld-1.0-SNAPSHOT.jar
+##使用 -cp参数
+$  java -cp target/HelloWorld-1.0-SNAPSHOT.jar  org.darebeat.App
+start connect
+
+## 或者修改pom.xml 指定main class
+<build>  
+    <plugins>  
+        <plugin>  
+            <!-- Build an executable JAR -->  
+            <groupId>org.apache.maven.plugins</groupId>  
+            <artifactId>maven-jar-plugin</artifactId>  
+            <version>3.1.0</version>  
+            <configuration>  
+                <archive>  
+                ## 指定class
+                    <manifest>  
+                        <mainClass>org.darebeat.App</mainClass>  
+                    </manifest>  
+                </archive>  
+            </configuration>  
+        </plugin>  
+    </plugins>  
+</build>
+## main根据代码内容修改
+
+$  java -jar target/HelloWorld-1.0-SNAPSHOT.jar 
+start connect
+ckage org.darebeat;
+
+import java.sql.*;
+
+public class App {
+    private Connection conn = null;
+    public static void main(String[] args)   {
+       ...
+    }
+}
+```
+
+end
+
+
+
+#### 获取一个应用的全部maven依赖:mag:
 
 1. docker run --rm -it maven bash
 2. git clone http_url_git
@@ -234,6 +290,10 @@ jar包不变，修改pom.xml 中的version
 
 end
 
+##### \<scope>
+
+
+
 ##### modules
 
 maven聚合项目查看那个是root module，可以在项目中搜索`modules`
@@ -306,6 +366,64 @@ end
     </build>
 
 </project>
+
+```
+
+end
+
+##### 将所有依赖打入jar:cry:
+
+不将项目依赖的jar打入制品jar，会导致制品jar换个机器或者环境就无法运行了。但是这样做的代价是jar包很大。
+
+```xml
+
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-shade-plugin</artifactId>
+      <version>3.0.0</version>
+      <executions>
+        <execution>
+          <phase>package</phase>
+          <goals>
+            <goal>shade</goal>
+          </goals>
+        </execution>
+      </executions>
+    </plugin>
+    <plugin>
+    <!-- Build an executable JAR -->
+       <groupId>org.apache.maven.plugins</groupId>
+       <artifactId>maven-jar-plugin</artifactId>
+       <version>3.1.0</version>
+        <configuration>
+           <archive>
+              <manifest>
+                  <mainClass>org.darebeat.App</mainClass>
+              </manifest>
+            </archive>
+        </configuration>
+   </plugin>
+  </plugins>
+</build>
+
+```
+
+springboot肯定包含了这些，就这一个build-plugin，至少包含了两步
+
+* 将jar所有依赖打到制品jar中，在其他机器上可以直接`java -jar`运行
+* 指定了入口manifest class，使得可以直接`java -jar`运行
+
+```xml
+<build>
+  <plugins>
+  <!--spring boot maven插件-->
+     <plugin>                         <groupId>org.springframework.boot</groupId>
+ <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+  </plugins>
+</build>
 
 ```
 

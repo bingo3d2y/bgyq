@@ -179,7 +179,7 @@ end
 
 项目定义了main class，所以可以直接`java -jar`启动项目。
 
-#### pom.xml：plugins
+#### pom.xml：main class
 
 指定manifest
 
@@ -311,6 +311,63 @@ end
   不过如果项目中用到了Spring Framework，将依赖打到一个jar包中，运行时会出现读取XML schema文件出错。原因是Spring Framework的多个jar包中包含相同的文件spring.handlers和spring.schemas，如果生成单个jar包会互相覆盖。为了避免互相影响，可以使用`AppendingTransformer`来对文件内容追加合并。
 
 * end
+
+#### maven-shade-plugin and spring boot将项目全部依赖打入jar包:cry:
+
+不将项目依赖的jar打入制品jar，会导致制品jar换个机器或者环境就无法运行了。但是这样做的代价是jar包很大。
+
+```xml
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-shade-plugin</artifactId>
+      <version>3.0.0</version>
+      <executions>
+        <execution>
+          <phase>package</phase>
+          <goals>
+            <goal>shade</goal>
+          </goals>
+        </execution>
+      </executions>
+    </plugin>
+    <plugin>
+    <!-- Build an executable JAR -->
+       <groupId>org.apache.maven.plugins</groupId>
+       <artifactId>maven-jar-plugin</artifactId>
+       <version>3.1.0</version>
+        <configuration>
+           <archive>
+              <manifest>
+                  <mainClass>org.darebeat.App</mainClass>
+              </manifest>
+            </archive>
+        </configuration>
+   </plugin>
+  </plugins>
+</build>
+
+```
+
+springboot肯定包含了这些，就这一个build-plugin，至少包含了两步
+
+* 将jar所有依赖打到制品jar中，在其他机器上可以直接`java -jar`运行
+* 指定了入口manifest class，使得可以直接`java -jar`运行
+
+```xml
+<build>
+  <plugins>
+  <!--spring boot maven插件-->
+     <plugin>                         <groupId>org.springframework.boot</groupId>
+ <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+  </plugins>
+</build>
+
+```
+
+end
 
 ### 引用：
 
