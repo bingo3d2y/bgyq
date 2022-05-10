@@ -4,6 +4,33 @@ Spring Boot makes it easy to create stand-alone, production-grade Spring based A
 
 Spring Boot是个脚手架帮你快速生成Spring框架项目所需的配置。
 
+### cannot load configuration class
+
+现象：docker maven 中 `mvn package`一个spring boot demo，但是运行jar时报错
+
+提示:
+
+```bash
+2022-05-09 16:17:08.777 ERROR 1026 --- [           main] o.s.boot.SpringApplication               : Application startup failed
+
+java.lang.IllegalStateException: Cannot load configuration class: Demo_Class_name
+
+```
+
+解决，替换Pom.xml中springframework.boot的版本
+
+```xml
+ <parent>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-parent</artifactId>
+                <version>2.2.4.RELEASE</version>
+                <relativePath/> <!-- lookup parent from repository -->
+        </parent>
+
+```
+
+end
+
 ### 面临问题
 
 Pod IP不固定，没有spring cloud的Eureka注册中心，且Spring boot依赖配置文件指定其他服务模块访问地址（IP＋ Port）。

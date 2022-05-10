@@ -95,6 +95,10 @@ $ java -cp  /opt/nti-server/resources:/opt/nti-server/classes:/opt/nti-server/li
 
 #### `java -jar`
 
+一个可执行的 JAR 必须通过 menifest 文件的头引用它所需要的所有其他从属 JAR。**如果使用了 -jar选项，那么环境变量 CLASSPATH 和在命令行中指定的所有类路径都被 JVM 所忽略。**
+
+即一个可执行的jar必须包含运行该jar的全部依赖--
+
 java -jar 运行一个jar的时候并没有指定运行的mian类，但是也是可以运行的，这个是因为在打包的时候，打包生成jar里面有文件指定了main类，所以，java -jar是可以直接的运行的。
 
 **要想jar包能直接通过`java -jar xxx.jar`运行，需要满足：**

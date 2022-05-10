@@ -4,7 +4,7 @@
 
 docker maven latest镜像构建编译，gayhub sprint-boot-demo无法运行，其他环境maven构建的可用运行。
 
-草
+解决，换了个springframework.boot的版本
 
 #### Java参数
 
@@ -243,6 +243,44 @@ end
 
 end
 
+#### MAINFEST
+
+从 MANIFEST 文件中提供的信息大概可以了解到其基本作用
+
+- JAR 包基本信息描述
+- Main-Class 指定程序的入口，这样可以直接用java -jar xxx.jar来运行程序
+- Class-Path 指定jar包的依赖关系，class loader会依据这个路径来搜索class
+
+```bash
+$ jar xvf ../HelloWorld-1.0-SNAPSHOT.jar
+ ...
+ inflated: META-INF/maven/org.darebeat/HelloWorld/pom.xml
+$ ls -l
+total 8
+drwxr-xr-x 3 root root 4096 May 10 15:25 META-INF
+drwxr-xr-x 3 root root 4096 May 10 15:04 org
+$ ls META-INF/
+MANIFEST.MF  maven/
+$ cat  META-INF/MANIFEST.MF
+Manifest-Version: 1.0
+Created-By: Apache Maven 3.8.4
+Built-By: root
+Build-Jdk: 17.0.1
+Main-Class: org.darebeat.App
+```
+
+end
+
+##### 可执行的jar:fire:
+
+可以执行的 JAR 与 普通的 JAR 最直接的区别就是能否通过 java -jar 来执行。
+
+> 一个 可执行的 jar文件是一个自包含的 Java 应用程序，它存储在特别配置的 JAR 文件中，可以由 JVM 直接执行它而无需事先提取文件或者设置类路径。要运行存储在非可执行的 JAR 中的应用程序，必须将它加入到您的类路径中，并用名字调用应用程序的主类。但是使用可执行的 JAR 文件，我们可以不用提取它或者知道主要入口点就可以运行一个应用程序。可执行 JAR 有助于方便发布和执行 Java 应用程序
+
+一个可执行的 JAR 必须通过 menifest 文件的头引用它所需要的所有其他从属 JAR。**如果使用了 -jar选项，那么环境变量 CLASSPATH 和在命令行中指定的所有类路径都被 JVM 所忽略。**
+
+so，可执行的jar必须要必须包含了运行该jar的所以依赖。
+
 #### mvn and  pom.xml配置
 
 mvn执行构建命令时，默认读取的是当前目录下的`pom.xml`文件，可以通过`-f`参数指定其他的pom文件。
@@ -252,7 +290,290 @@ eg： 项目下有两个pom.xml，作用不一
 * pom.xml : 正常构建jar包
 * pom-build.xml: 构建docker image
 
+##### dependencies and build:green_salad:
 
+问题：
+
+一个使用jdbc的java demo，通过`pom.xml--> <dependencies>`指定了mysql-connector驱动，但是执行`mvn package`后，运行jar提示`java.lang.ClassNotFoundException: com.mysql.jdbc.Driver`。
+
+
+
+###### V1
+
+如下所示：
+
+```bash
+$ cat pom.xml
+<project ...>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.darebeat</groupId>
+  <artifactId>HelloWorld</artifactId>
+  <packaging>jar</packaging>
+  <version>1.0-SNAPSHOT</version>
+  <name>HelloWorld</name>
+  <url>http://maven.apache.org</url>
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- MySQL的JDBC数据库驱动 -->
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <!-- <version>5.1.47</version> -->
+      <version>5.1.47</version>
+    </dependency>
+  </dependencies>
+  <properties>
+     <maven.compiler.source>1.8</maven.compiler.source>
+     <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
+<build>
+  <plugins>
+    <plugin>
+            <!-- Build an executable JAR -->
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <version>3.1.0</version>
+            <configuration>
+                <archive>
+                    <manifest>
+                        <mainClass>org.darebeat.App</mainClass>
+                    </manifest>
+                </archive>
+            </configuration>
+   </plugin>
+  </plugins>
+</build>
+</project>
+## 查看本地仓库依赖存在
+$ ls /root/.m2/repository/mysql/mysql-connector-java/5.1.47/
+_remote.repositories             mysql-connector-java-5.1.47.jar.sha1  mysql-connector-java-5.1.47.pom.sha1
+mysql-connector-java-5.1.47.jar  mysql-connector-java-5.1.47.pom
+
+
+## 执行jar
+$ java -jar target/HelloWorld-1.0-SNAPSHOT.jar
+java.lang.ClassNotFoundException: com.mysql.jdbc.Driver
+        at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)
+        at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:520)
+        at java.base/java.lang.Class.forName0(Native Method)
+        at java.base/java.lang.Class.forName(Class.java:375)
+        at org.darebeat.App.main(App.java:24)
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "java.sql.PreparedStatement.executeQuery()" because "org.darebeat.App.ps" is null
+        at org.darebeat.App.main(App.java:39)
+
+$ du -sh target/*
+4.0K    target/HelloWorld-1.0-SNAPSHOT.jar
+16K     target/classes
+8.0K    target/generated-sources
+8.0K    target/generated-test-sources
+8.0K    target/maven-archiver
+40K     target/maven-status
+12K     target/surefire-reports
+16K     target/test-classes
+
+```
+
+很显然`mvn package`时，只是根据`dependencies`将依赖包拉取到了本地的maven repository，但是编译jar包时，并没有将依赖加入制品jar中。
+
+###### V2
+
+增加新的pom-build-plugin, 可以看到`target/`下增加了`dependency`但是还是报错
+
+`<phase>package</phase>`这个很重要，这表示在`mvn package`时才会cp-dependency，
+
+`<phase>install</phase>`这个很重要，这表示在`mvn install`时才会cp-dependency，
+
+```bash
+# 修改pom.xml
+<build>
+  <plugins>
+    <plugin>
+            <!-- Build an executable JAR -->
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <version>3.1.0</version>
+            <configuration>
+                <archive>
+                    <manifest>
+                        <mainClass>org.darebeat.App</mainClass>
+                    </manifest>
+                </archive>
+            </configuration>
+    </plugin>
+    <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            ##增加dependency插件
+            <artifactId>maven-dependency-plugin</artifactId>
+            <version>2.8</version>
+            <executions>
+               <execution>
+                  <phase>package</phase>
+                     <goals>
+                        <goal>copy-dependencies</goal>
+                     </goals>
+               </execution>
+           </executions>
+     </plugin>
+  </plugins>
+</build>
+
+
+$ du -sh target/*
+4.0K    target/HelloWorld-1.0-SNAPSHOT.jar
+16K     target/classes
+1.1M    target/dependency
+8.0K    target/generated-sources
+8.0K    target/generated-test-sources
+8.0K    target/maven-archiver
+40K     target/maven-status
+12K     target/surefire-reports
+16K     target/test-classes
+$ ls target/dependency/
+junit-3.8.1.jar  mysql-connector-java-5.1.47.jar
+
+java.lang.ClassNotFoundException: com.mysql.jdbc.Driver
+
+```
+
+end
+
+###### V3
+
+将依赖包cp到项目的`libs`目录中
+
+Default output location used for mojo, unless overridden in ArtifactItem.
+**Default value is**: `${project.build.directory}/dependency`.
+**User property is**: `outputDirectory`.
+
+```bash
+# 修改pom.xml
+<build>
+  <plugins>
+    <plugin>
+            ...
+    </plugin>
+    <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            ##增加dependency插件
+            <artifactId>maven-dependency-plugin</artifactId>
+            <version>2.8</version>
+            <executions>
+               <execution>
+                  <phase>package</phase>
+                     <goals>
+                        <goal>copy-dependencies</goal>
+                     </goals>
+               </execution>
+           </executions>
+           <configuration>
+                <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                <includeScope>runtime</includeScope>
+          </configuration>
+     </plugin>
+  </plugins>
+</build>
+$ du -sh target/*
+4.0K    target/HelloWorld-1.0-SNAPSHOT.jar
+16K     target/classes
+8.0K    target/generated-sources
+8.0K    target/generated-test-sources
+988K    target/lib
+8.0K    target/maven-archiver
+40K     target/maven-status
+12K     target/surefire-reports
+16K     target/test-classes
+$ ls target/lib/
+mysql-connector-java-5.1.47.jar
+$ java -jar target/HelloWorld-1.0-SNAPSHOT.jar
+java.lang.ClassNotFoundException: com.mysql.jdbc.Driver
+```
+
+end
+
+###### V4: 可执行的jar
+
+答案：一个可执行的 JAR 必须通过 menifest 文件的头引用它所需要的所有其他从属 JAR。**如果使用了 -jar选项，那么环境变量 CLASSPATH 和在命令行中指定的所有类路径都被 JVM 所忽略。**
+
+想不通...
+
+You can fix this error by deploying **mysql-connector-java-5.1.25-bin.jar** into your application's classpath.
+
+pom.xml包驱动包已经引入了，代码如下：
+
+```xml
+    <dependency>
+        <groupId>mysql</groupId>
+        <artifactId>mysql-connector-java</artifactId>
+        <version>5.1.26</version>
+    </dependency>
+```
+
+可还是报java.lang.ClassNotFoundException: com.mysql.jdbc.Driver问题。
+
+```bash
+$ mkdir unpack_jar
+$ cd unpack_jar/
+$ jar xvf ../HelloWorld-1.0-SNAPSHOT.jar
+ inflated: META-INF/MANIFEST.MF
+  created: META-INF/
+  created: org/
+  created: org/darebeat/
+  created: META-INF/maven/
+  created: META-INF/maven/org.darebeat/
+  created: META-INF/maven/org.darebeat/HelloWorld/
+ inflated: org/darebeat/App.class
+ inflated: META-INF/maven/org.darebeat/HelloWorld/pom.properties
+ inflated: META-INF/maven/org.darebeat/HelloWorld/pom.xml
+$ ls -l
+total 8
+drwxr-xr-x 3 root root 4096 May 10 15:25 META-INF
+drwxr-xr-x 3 root root 4096 May 10 15:04 org
+$ ls META-INF/
+MANIFEST.MF  maven/
+$ cat  META-INF/MANIFEST.MF
+Manifest-Version: 1.0
+Created-By: Apache Maven 3.8.4
+Built-By: root
+Build-Jdk: 17.0.1
+Main-Class: org.darebeat.App
+# 这样还是不行--
+$ java -cp .:/root/.m2/repository/mysql/mysql-connector-java/5.1.47/mysql-connector-java-5.1.47.jar -jar ./target/HelloWorld-1.0-SNAPSHOT.jar
+
+java.lang.ClassNotFoundException: com.mysql.jdbc.Driver
+
+
+
+# 终于成功执行了...
+$ java -cp ./target/HelloWorld-1.0-SNAPSHOT.jar:/root/.m2/repository/mysql/mysql-connector-java/5.1.47/mysql-connector-java-5.1.47.jar  org.darebeat.App
+connect mysql!
+CO2:3  CO:2
+CO2:5  CO:4
+$ java -cp ./target/HelloWorld-1.0-SNAPSHOT.jar:./lib/mysql-connector-java-5.1.47.jar  org.darebeat.App
+connect mysql!
+CO2:3  CO:2
+CO2:5  CO:4
+
+```
+
+如果有很多`.class`文件，散落在各层目录中，肯定不便于管理。如果能把目录打一个包，变成一个文件，就方便多了。
+
+核心还是：依赖没在classpath
+
+jar包就是用来干这个事的，它可以把`package`组织的目录层级，以及各个目录下的所有文件（包括`.class`文件和其他文件）都打成一个jar文件，这样一来，无论是备份，还是发给客户，就简单多了。
+
+jar包实际上就是一个zip格式的压缩文件，而jar包相当于目录。如果我们要执行一个jar包的`class`，就可以把jar包放到`classpath`中：
+
+```
+java -cp ./hello.jar abc.xyz.Hello
+```
+
+这样JVM会自动在`hello.jar`文件里去搜索某个类。
 
 ##### 修改pom文件定义jar版本
 
@@ -292,7 +613,13 @@ end
 
 ##### \<scope>
 
+- `runtime` scope gives runtime and compile dependencies,
+- `compile` scope gives compile, provided, and system dependencies,
+- `test` (default) scope gives all dependencies,
+- `provided` scope just gives provided dependencies,
+- `system` scope just gives system dependencies.
 
+使用\<excludeScope>test\</excludeScope>，这样会把所有compile级别的也排除。
 
 ##### modules
 
@@ -373,7 +700,9 @@ end
 
 ##### 将所有依赖打入jar:cry:
 
-不将项目依赖的jar打入制品jar，会导致制品jar换个机器或者环境就无法运行了。但是这样做的代价是jar包很大。
+The [Shade Plugin](https://maven.apache.org/plugins/maven-shade-plugin/index.html) provides the capability to create uber jars. That is, jars that contains the project's classes as well as the classes from the project's runtime dependencies.
+
+The basic usage of the plugin is enabled by declaring the plugin in the POM's build section tying it to the package build phase:
 
 ```xml
 
@@ -410,6 +739,10 @@ end
 
 ```
 
+To build the uber jar, run maven with the package target
+
+不将项目依赖的jar打入制品jar，会导致制品jar换个机器或者环境就无法运行了。但是这样做的代价是jar包很大。
+
 springboot肯定包含了这些，就这一个build-plugin，至少包含了两步
 
 * 将jar所有依赖打到制品jar中，在其他机器上可以直接`java -jar`运行
@@ -442,7 +775,7 @@ mvn clean deploy依次执行了clean、resources、compile、testResources、tes
 **install**命令完成了项目编译、单元测试、打包功能，同时把打好的可执行jar包（war包或其它形式的包）布署到本地maven仓库，但没有布署到远程maven私服仓库
 **deploy**命令完成了项目编译、单元测试、打包功能，同时把打好的可执行jar包（war包或其它形式的包）布署到本地maven仓库和远程maven私服仓库
 
-##### maven 构建声明周期
+##### maven 构建声明周期及应用
 
 构建生命周期中的每一个由构建阶段的不同列表定义，其中构建阶段表示生命周期中的阶段。
 
@@ -455,6 +788,10 @@ mvn clean deploy依次执行了clean、resources、compile、testResources、tes
 - **`验证（verify）`** - 对集成测试的结果执行任何检查，以确保满足质量标准
 - **`安装（install）`** - 将软件包安装到本地存储库中，用作本地其他项目的依赖项
 - **`部署（deploy）`** - 在构建环境中完成，将最终的包复制到远程存储库以与其他开发人员和项目共享。
+
+`<phase>package</phase>`这个很重要，这表示在`mvn package`时才会cp-dependency，
+
+`<phase>install</phase>`这个很重要，这表示在`mvn install`时才会cp-dependency，
 
 ##### skip test
 
@@ -863,4 +1200,5 @@ end
 
 1. https://blog.csdn.net/zhaojianting/article/details/80324533
 2. https://maven.apache.org/guides/mini/guide-multiple-repositories.html 
-2. https://www.jianshu.com/p/c4f02c5bdfc7
+3. https://www.jianshu.com/p/c4f02c5bdfc7
+4. https://juejin.cn/post/6844903876877893640
