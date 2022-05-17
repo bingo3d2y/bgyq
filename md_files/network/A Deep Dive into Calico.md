@@ -28,7 +28,30 @@ calico初始化说，子网划分为`26`，k8s节点数列多了以后，导致�
 
 `192.168.1.0/26`分为了，在加个新的网段给calico比如`192.168.2.0/26`
 
-##### 复用calico已有网段
+##### ipam borrowing ip
+
+https://www.yuque.com/docs/share/5a20f932-48f1-4e88-8958-db3df515606c?#
+
+实现效果，其他节点可以复用已分配的ip block
+
+Run `calicoctl ipam configure --help` to display the following help menu for the command.
+
+```bash
+Usage:
+  calicoctl ipam configure --strictaffinity=<true/false> [--config=<CONFIG>]
+
+Options:
+  -h --help                        Show this screen.
+  # 666
+     --strictaffinity=<true/false> Set StrictAffinity to true/false. When StrictAffinity
+                                   is true, borrowing IP addresses is not allowed.
+  -c --config=<CONFIG>             Path to the file containing connection configuration in
+                                   YAML or JSON format.
+                                   [default: /etc/calico/calicoctl.cfg]
+
+Description:
+ Modify configuration for Calico IP address management.
+```
 
 网段被主机分完了但是ip没使用完，因为一个node上不会有那么多pod
 
