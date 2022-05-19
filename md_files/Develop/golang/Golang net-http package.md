@@ -127,6 +127,7 @@ func ListenAndServe(addr string, handler Handler) error {
 这里可以自定义http服务器配置，都在Server这个结构体中,这个对象能配置监听地址端口，配置读写超时时间，配置handler,配置请求头最大字节数...，所有稍微改造一下v2的程序得到v3版:
 
 ```go
+var server *http.Server
 func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/", &myHandler{})
@@ -333,7 +334,183 @@ http.Client底层的数据连接建立和维护是由http.Transport实现的，h
 
 end
 
+### mutli-port-http:happy:
 
+一个应用监听两个端口，一个端口用于提供服务，另一个端口用来提供debug信息
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+var serverApp *http.Server
+var serverDebug  *http.Server
+
+func main()  {
+
+	done := make(chan error, 2)
+	stop := make(chan struct{})
+
+	serAppMux := http.NewServeMux()
+	SerDebugMux := http.NewServeMux()
+
+	serAppMux.HandleFunc("/", app)
+	SerDebugMux.HandleFunc("/", debug)
+
+	serAppMux.HandleFunc("/shutdown", appShutdown)
+	SerDebugMux.HandleFunc("/shutdown", debugShutdown)
+
+	go func() {
+		done <- serveAppHTTP("127.0.0.1:8080",serAppMux,stop)
+	}()
+	go func() {
+		done <- serveDebugHTTP("127.0.0.1:8082",SerDebugMux,stop)
+	}()
+	var stoped bool
+
+	for i:=0; i < cap(done); i++ {
+		if err := <-done; err != nil {
+			fmt.Println("error: ", err)
+		}
+		// close(stop)放到这里，当任意一个http server退出时，整个application都会退出
+		//if !stoped{
+		//	stoped = true
+		//	fmt.Println("main goroutine close stop channel")
+		//	close(stop)
+		//}
+	}
+	// close(stop)放到这里，app server 和 debug server,退出一个不会影响另一个的运行
+	if !stoped{
+		stoped = true
+		fmt.Println("main goroutine close stop channel")
+		close(stop)
+	}
+	time.Sleep(time.Second)
+}
+
+func serveAppHTTP(addr string, handler http.Handler, stop <-chan struct{}) error  {
+	serverApp = &http.Server{
+		Addr: addr,
+		Handler: handler,
+	}
+	go func() {
+		<-stop
+		fmt.Println("stop serveApp http server")
+		serverApp.Close()
+	}()
+	return serverApp.ListenAndServe()
+}
+
+func serveDebugHTTP(addr string, handler http.Handler, stop <-chan struct{}) error  {
+	serverDebug = &http.Server{
+		Addr: addr,
+		Handler: handler,
+	}
+	go func() {
+		<-stop
+		fmt.Println("stop serveDebug http server")
+		serverDebug.Close()
+	}()
+	return serverDebug.ListenAndServe()
+}
+
+func debug(w http.ResponseWriter, r *http.Request)  {
+	w.Write([]byte("debug info"))
+}
+
+func debugShutdown(w http.ResponseWriter, r *http.Request)  {
+	w.Write([]byte("debug server shutdown"))
+	ctx := context.TODO()
+	serverDebug.Shutdown(ctx)
+}
+
+func app(w http.ResponseWriter, r *http.Request)  {
+	w.Write([]byte("app info"))
+}
+
+func appShutdown(w http.ResponseWriter, r *http.Request)  {
+	w.Write([]byte("app shutdown"))
+	serverApp.Shutdown(context.TODO())
+
+}
+
+```
+
+end
+
+#### 代码优化：抽象公共serve
+
+但是，这样怎么调用shutdown呢？？？
+
+```go
+func main() {
+	done := make(chan error, 2)
+	stop := make(chan struct{})
+	// 将这两个serve返回值给 done 后，这两个任何有一个退出都可以在done中发现。
+	// 同时通过stop来控制退出
+	go func() {
+		done <- serveDebug(stop)
+	}()
+	go func() {
+		done <- serveApp(stop)
+	}()
+
+	var stopped bool
+	for i := 0; i < cap(done); i++ {
+		if err := <-done; err != nil {
+			fmt.Println("error: %v", err) // 若deug或app中任何一个退出都会打印退出的错误
+		}
+		// 同时只要有退出，就将stop关闭，那么根据抽象模型可以知道，
+		// stop被关闭后deug和app都会唤醒其内部的goroutine，都会取调用shutdown而退出整个serve
+		if !stopped {
+			stopped = true
+			close(stop)
+		}
+	}
+}
+
+func serveApp(stop chan struct{}) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
+		fmt.Fprintln(resp, "hello,CQ")
+	})
+	return serve("0.0.0.0:8080", mux, stop)
+
+}
+
+func serveDebug(stop chan struct{}) error{
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
+		fmt.Fprintln(resp, "hello,debug info")
+	})
+	return serve("127.0.0.1:8082", mux,stop)
+}
+
+
+
+// 接受一个监听地址，接收一个http.Handler,接收一个stop信号量
+func serve(addr string, handler http.Handler, stop <-chan struct{}) error {
+	s := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+	// 后台启用一个 goroutine，能够接收一个stop信号，之后会调用shutdown方法
+	go func() {
+		<-stop // wait for stop signal
+		// 调用了shutdown方法之后 ListenAndServe 也会被退出，
+		// 因此这个 goroutine 能够决定外面的 goroutine的声明周期
+		s.Shutdown(context.Background())
+	}()
+	return s.ListenAndServe()
+}
+```
+
+end
 
 ### 引用
 

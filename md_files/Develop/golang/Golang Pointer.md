@@ -28,7 +28,7 @@ func main(){
 
 #### 指针和指向指针的指针
 
-通常指针做形参，是不是不应该直接修改形参的执行，而是应该只修改指针执行的内容。
+通常指针做形参，是不是不应该直接修改形参的指向，而是应该只修改指针指向的内容。
 
 ```go
 func main(){
@@ -83,7 +83,7 @@ func testNum(n *int){
 	fmt.Println("goroutine origin n", n)
 	num := 5
 	n = &num
-    // 或者不要形参n，直接给全局变量test复制
+    // 或者不要形参n，直接给全局变量test赋值
 	test = n
 	fmt.Println("goroutine init n", n)
 	fmt.Println("goroutine change n value to ", *n)
