@@ -4,6 +4,12 @@ Spring Boot makes it easy to create stand-alone, production-grade Spring based A
 
 Spring Boot是个脚手架帮你快速生成Spring框架项目所需的配置。
 
+### 官方初始化springboot工具
+
+https://start.spring.io/
+
+不赖~~
+
 ### cannot load configuration class
 
 现象：docker maven 中 `mvn package`一个spring boot demo，但是运行jar时报错
@@ -186,6 +192,328 @@ waf:
 ````
 
 end
+
+### Eureka注册
+
+eureka的client注册到server时默认是使用hostname而不是ip,这就导致client在多台机器时，服务间相互调用时也会使用hostname进行调用，从而调用失败。
+这时候就需要使用ip来服务到eureka-server上，需要在eureka的client增加配置：
+
+`eureka.instance.prefer-ip-address=true`将instacne hostname解析成IP
+
+然后增加`eureka.instance.instance-id`属性来配置services的注册instance
+
+```bash
+$ cat application.properties
+
+server.port=8903
+spring.application.name=service-client
+eureka.client.service-url.defaultZone=${EUREKA_URL:http://springcloud-discover.springcloudtiizxr06:8761}
+eureka.instance.prefer-ip-address=true
+eureka.instance.instance-id=${spring.cloud.client.ip-address}:${server.port}
+
+```
+
+end
+
+### Servlet and Tomcat 
+
+在JavaEE平台上，处理TCP连接，解析HTTP协议这些底层工作统统扔给现成的Web服务器去做，我们只需要把自己的应用程序跑在Web服务器上。为了实现这一目的，JavaEE提供了Servlet API，我们使用Servlet API编写自己的Servlet来处理HTTP请求，Web服务器实现Servlet API接口，实现底层功能：
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/servlet.jpg)
+
+#### Servelet  and tomcat
+
+**servlet就是一个Java接口**，interface! 打开idea，ctrl + shift + n，搜索servlet，就可以看到是一个只有5个方法的interface!
+
+**网络协议、http什么的，servlet根本不管！也管不着！**
+
+**那servlet是干嘛的？很简单，接口的作用是什么？规范呗！**
+
+servlet接口定义的是一套处理网络请求的规范，所有实现servlet的类，都需要实现它那五个方法，其中最主要的是两个生命周期方法 init()和destroy()，还有一个处理请求的service()，也就是说，所有实现servlet接口的类，或者说，所有想要处理网络请求的类，都需要回答这三个问题：
+
+- 你初始化时要做什么
+- 你销毁时要做什么
+- 你接受到请求时要做什么
+
+servlet是一个规范，那实现了servlet的类，就能处理请求了吗？
+
+**答案是，不能。**
+
+你可以随便谷歌一个servlet的hello world教程，里面都会让你写一个servlet，相信我，**你从来不会在servlet中写什么监听8080端口的代码，servlet不会直接和客户端打交道！**
+
+那请求怎么来到servlet呢？答案是servlet容器，比如我们最常用的tomcat，同样，你可以随便谷歌一个servlet的hello world教程，里面肯定会让你把servlet部署到一个容器中，不然你的servlet压根不会起作用。
+
+**tomcat才是与客户端直接打交道的家伙**，他监听了端口，请求过来后，根据url等信息，确定要将请求交给哪个servlet去处理，然后调用那个servlet的service方法，service方法返回一个response对象，tomcat再把这个response返回给客户端。
+
+
+
+作者：柳树
+链接：https://www.zhihu.com/question/21416727/answer/339012081
+来源：知乎
+著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+
+#### servelet API
+
+现一个最简单的Servlet：
+
+```java
+// WebServlet注解表示这是一个Servlet，并映射到地址/:
+@WebServlet(urlPatterns = "/")
+public class HelloServlet extends HttpServlet {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+        // 设置响应类型:
+        resp.setContentType("text/html");
+        // 获取输出流:
+        PrintWriter pw = resp.getWriter();
+        // 写入响应:
+        pw.write("<h1>Hello, world!</h1>");
+        // 最后不要忘记flush强制输出:
+        pw.flush();
+    }
+}
+```
+
+一个Servlet总是继承自`HttpServlet`，然后覆写`doGet()`或`doPost()`方法。注意到`doGet()`方法传入了`HttpServletRequest`和`HttpServletResponse`两个对象，分别代表HTTP请求和响应。我们使用Servlet API时，并不直接与底层TCP交互，也不需要解析HTTP协议，因为`HttpServletRequest`和`HttpServletResponse`就已经封装好了请求和响应。以发送响应为例，我们只需要设置正确的响应类型，然后获取`PrintWriter`，写入响应即可。
+
+现在问题来了：Servlet API是谁提供？
+
+Servlet API是一个jar包，我们需要通过Maven来引入它，才能正常编译。编写`pom.xml`文件如下：
+
+```
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.itranswarp.learnjava</groupId>
+    <artifactId>web-servlet-hello</artifactId>
+    <packaging>war</packaging>
+    <version>1.0-SNAPSHOT</version>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <java.version>11</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>hello</finalName>
+    </build>
+</project>
+```
+
+注意到这个`pom.xml`与前面我们讲到的普通Java程序有个区别，打包类型不是`jar`，而是`war`，表示Java Web Application Archive：
+
+```
+<packaging>war</packaging>
+```
+
+引入的Servlet API如下：
+
+```
+<dependency>
+    <groupId>javax.servlet</groupId>
+    <artifactId>javax.servlet-api</artifactId>
+    <version>4.0.0</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+注意到`<scope>`指定为`provided`，表示编译时使用，但不会打包到`.war`文件中，因为运行期Web服务器本身已经提供了Servlet API相关的jar包。
+
+我们还需要在工程目录下创建一个`web.xml`描述文件，放到`src/main/webapp/WEB-INF`目录下（固定目录结构，不要修改路径，注意大小写）。文件内容可以固定如下：
+
+```
+<!DOCTYPE web-app PUBLIC
+ "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+ "http://java.sun.com/dtd/web-app_2_3.dtd">
+<web-app>
+  <display-name>Archetype Created Web Application</display-name>
+</web-app>
+```
+
+运行Maven命令`mvn clean package`，在`target`目录下得到一个`hello.war`文件，这个文件就是我们编译打包后的Web应用程序。
+
+#### 运行war
+
+我们应该如何运行这个`war`文件？
+
+普通的Java程序是通过启动JVM，然后执行`main()`方法开始运行。但是Web应用程序有所不同，我们无法直接运行`war`文件，必须先启动Web服务器，再由Web服务器加载我们编写的`HelloServlet`，这样就可以让`HelloServlet`处理浏览器发送的请求。
+
+因此，我们首先要找一个支持Servlet API的Web服务器。常用的服务器有：
+
+- [Tomcat](https://tomcat.apache.org/)：由Apache开发的开源免费服务器；
+- [Jetty](https://www.eclipse.org/jetty/)：由Eclipse开发的开源免费服务器；
+- [GlassFish](https://javaee.github.io/glassfish/)：一个开源的全功能JavaEE服务器。
+
+还有一些收费的商用服务器，如Oracle的[WebLogic](https://www.oracle.com/middleware/weblogic/)，IBM的[WebSphere](https://www.ibm.com/cloud/websphere-application-platform/)。
+
+无论使用哪个服务器，只要它支持Servlet API 4.0（因为我们引入的Servlet版本是4.0），我们的war包都可以在上面运行。
+
+#### Tomcat and Sprint boot
+
+正常情况下，我们开发 SpringBoot 项目，由于内置了Tomcat，所以项目可以直接启动，部署到服务器的时候，直接打成 jar 包，就可以运行了 (使用内置 Tomcat 的话，可以在 application.yml 中进行相关配置)
+
+有时我们会需要打包成 war 包，放入外置的 Tomcat 中进行运行，步骤如下 (此处我用的 SpringBoot 版本为 2.1.1，Tomcat 的版本为 8.0)
+
+
+##### change jar to war
+
+https://spring.io/blog/2014/03/07/deploying-spring-boot-applications
+
+将spring boot jar 变成war，五步
+
+* 排除spring boot内置 Tomcat
+* 将打包方式更改为 war
+* 修改启动类，使启动类继承 SpringBootServletInitializer 类。
+*  SpringBootServletInitializer 类需要用到 servlet-api 的相关 jar 包，所以需要添加依赖。
+* 配置外置 Tomcat
+
+But, I imagine you wondering, “how do I deploy it to an *existing* Tomcat installation, or to the classic Java EE application servers (some of which cost a lot of money!) like WebSphere, WebLogic, or JBoss?” Easy! It’s still just Spring, after all, so very little else is required. You’ll need to make three intuitive changes: [move from a `jar` build to a `war` build in Maven](https://spring.io/guides/gs/convert-jar-to-war/): comment out the declaration of the `spring-boot-maven-plugin` plugin in your `pom.xml` file, then change the Maven `packaging` type to `war`. Finally, add a web entry point into your application. Spring configures almost everything for you using Servlet 3 Java configuration. You just need to give it the opportunity. Modify your `Application` entry-point class thusly:
+
+```java
+package demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.web.SpringBootServletInitializer;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@Configuration
+@ComponentScan
+@EnableAutoConfiguration
+public class Application extends SpringBootServletInitializer {
+
+    public static void main(String[] args) {
+        SpringApplication.run(applicationClass, args);
+    }
+
+    @Override
+    protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
+        return application.sources(applicationClass);
+    }
+
+    private static Class<Application> applicationClass = Application.class;
+}
+
+
+@RestController
+class GreetingController {
+
+    @RequestMapping("/hello/{name}")
+    String hello(@PathVariable String name) {
+        return "Hello, " + name + "!";
+    }
+} COPY
+```
+
+This new base class - `SpringBootServletInitializer` - taps into a Servlet 3 style Java configuration API which lets you describe in code what you could only describe in `web.xml` before. Such configuration classes are discovered and invoked at application startup. This gives Spring Boot a chance to tell the web server about the application, including the reqired `Servlet`s, `Filter`s and `Listener`s typically required for the various Spring projects.
+
+This new class can now be used to run the application using embeddedd Jetty or Tomcat, internally, and it can be deployed to any Servlet 3 container. You may experience issues if you have classes that conflict with those that ship as parter of a larger application server. In this case, use your build tool’s facilities for excluding or making `optional` the relevant APIs. Here are the changes to the Maven build that I had to make to get the starter Spring Boot REST service up and running on JBoss WildFly (the AS formerly known as JBoss AS):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>org.demo</groupId>
+	<artifactId>demo</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+
+    <packaging>war</packaging>
+	<description>Demo project</description>
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>1.0.0.BUILD-SNAPSHOT</version>
+	</parent>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-tomcat</artifactId>
+                </exclusion>
+            </exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<properties>
+        <start-class>demo.Application</start-class>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <java.version>1.7</java.version>
+	</properties>
+	<repositories>
+		<repository>
+			<id>spring-snapshots</id>
+			<name>Spring Snapshots</name>
+			<url>http://repo.spring.io/snapshot</url>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+		<repository>
+			<id>spring-milestones</id>
+			<name>Spring Milestones</name>
+			<url>http://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
+	<pluginRepositories>
+		<pluginRepository>
+			<id>spring-snapshots</id>
+			<name>Spring Snapshots</name>
+			<url>http://repo.spring.io/snapshot</url>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</pluginRepository>
+		<pluginRepository>
+			<id>spring-milestones</id>
+			<name>Spring Milestones</name>
+			<url>http://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</pluginRepository>
+	</pluginRepositories>
+</project>
+```
+
+I was then able to re-run the build and `cp` the built `.war` to the `$WILDFLY_HOME/standalone/deployments` directory.
+
+Start the application server if it’s not already running, and you should then be able to bring the application up at `http://localhost:8080/$YOURAPP/hello/World`. Again, I’ve substituted `$YOURAPP` for the name of your application, as built.
+
+
 
 ### SpringBoot
 

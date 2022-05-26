@@ -2,8 +2,6 @@
 
 ### Summary
 
-https://icode.best/i/50968040357920
-
 在Golang中，goroutine是有三个主要的陷阱：
 
 1. goroutine leaks 
@@ -14,16 +12,12 @@ https://icode.best/i/50968040357920
 
 对于2：Don't communicate by sharing memory, share memory by communicating.
 
-遵循以上能尽量避免以上三个问题的发生
-
-
+遵循以上能尽量避免以上三个问题的发生。
 
 再直白一点就是：
 
 1. 每当使用go启动一个goroutine时一定要注意它是否能正常结束
-2. 多个goroutine同时操作同一个变量（**communicate by sharing memory**），会有数据竞争的问题，尽量不要用这种方式；而推荐用传递共享方式，一个goroutine处理完了以后传递给另一个goroutine继续处理（**share memory by communicating**）
-
-以上是个人理解，仅供参考
+2. 多个goroutine同时操作同一个变量（**communicate by sharing memory**），会有数据竞争的问题，尽量不要用这种方式；而推荐用传递共享方式，一个goroutine处理完了以后传递给另一个goroutine继续处理（**share memory by communicating**，channel？）
 
 ### Goroutine leaks
 
