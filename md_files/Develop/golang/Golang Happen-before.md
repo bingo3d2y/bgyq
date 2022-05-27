@@ -83,7 +83,7 @@ https://zuoqy.com/2018/11/26/Golang-Memory-Model/
 指令重排序对goroutine内部的读写顺序可能有影响，但不会影响代码定义的当前goroutine整体的行为。
 例如在goroutine1中有代码`a = 1; b = 2;`，在其他goroutine中可能观察到b先于a赋值，但对于goroutine1，其行为不会因为指令重排序发生变化。
 
-Go语言中的Happens-Before：Happens-Before定义了内存操作的顺序。如果e1 happens-before e2, 则 e2 一定在e2发生之后才发生。如果e1 e2 没有happens-before的关系限制，则e1 e2是并发发生的。在单个goroutine内部， happens-before 次序就是程序定义的顺序。
+Go语言中的Happens-Before：Happens-Before定义了内存操作的顺序。如果e1 happens-before e2, 则 e2 一定在e1发生之后才发生。如果e1 e2 没有happens-before的关系限制，则e1 e2是并发发生的。在单个goroutine内部， happens-before 次序就是程序定义的顺序。
 
 **hb(a,b) presents “a happens before b”**
 
