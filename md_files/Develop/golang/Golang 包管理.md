@@ -56,6 +56,74 @@ go env -w GONOSUMDB=gopkg.test.com
 
 end
 
+
+
+#### 初始化go.mod
+
+适用场景：将代码中引用的第三方依赖，自动写入到go.mod文件
+
+could not import google.golang.org/protobuf/reflect/protoreflect (no package for import google.golang.org/protobuf/reflect/protoreflect)
+
+solution：
+
+I had the same problem, and it turned out that I just forgot to add protobuf to go.mod.
+
+如何添加呢，运行`go mod tidy`
+
+```bash
+$ go mod tidy
+D:\DoDo\gopath\src\test>go mod tidy
+go: finding module for package google.golang.org/grpc/status
+go: finding module for package google.golang.org/grpc
+go: finding module for package google.golang.org/grpc/codes
+go: downloading google.golang.org/grpc v1.46.2
+...
+go: downloading golang.org/x/text v0.3.3
+
+
+
+# 查看go.mod的变化
+module test
+
+go 1.17
+
+## 自动增加了 require中的内容
+require (
+	github.com/golang/protobuf v1.5.2 // indirect
+	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
+	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
+	golang.org/x/text v0.3.3 // indirect
+	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
+)
+
+```
+
+对于一个新创建的项目，我们可以在项目文件夹下按照以下步骤操作：
+
+1. 执行`go mod init 项目名`命令，在当前项目文件夹下创建一个`go.mod`文件。
+2. 手动编辑`go.mod`中的require依赖项或执行`go get`自动发现、维护依赖
+
+#### 更新go.mod中依赖版本
+
+tidy        add missing and remove unused modules
+
+```bash
+## 执行升级命令即可： go get -u package_name
+go get -u gopkg.test.com/test
+## 指定版本升级
+## 升级到最新的master版本--
+$ go get -u gopkg.test.com/test@master
+go: gopkg.test.com/test master => v0.15.1-0.20200824075759-de18f05a14bc
+go: downloading gopkg.test.com/test v0.15.1-0.20200824075759-de18f05a14b
+
+## 升级完成后，修改go.sum
+## go.mod 和 go.sum文件会被修改，然后git push 更新下仓库
+go mod tidy
+git add . && git commit && git push
+```
+
+end
+
 #### require:shamrock:
 
 ##### 远程仓库依赖包
@@ -110,64 +178,15 @@ replace test-server => ../test-server // 指定需要的包目录去后面这个
 
 
 
-#### 初始化go.mod
-
-适用场景：将代码中引用的第三方依赖，自动写入到go.mod文件
-
-could not import google.golang.org/protobuf/reflect/protoreflect (no package for import google.golang.org/protobuf/reflect/protoreflect)
-
-solution：
-
-I had the same problem, and it turned out that I just forgot to add protobuf to go.mod.
-
-```bash
-$ go mod vendor
-go: finding module for package google.golang.org/protobuf/reflect/protoreflect
-go: finding module for package google.golang.org/protobuf/runtime/protoimpl
-go: found google.golang.org/protobuf/reflect/protoreflect in google.golang.org/protobuf v1.28.0
-go: found google.golang.org/protobuf/runtime/protoimpl in google.golang.org/protobuf v1.28.0
-
-# 查看go.mod的变化
-module test
-
-go 1.17
-
-## 自动增加了 require
-require google.golang.org/protobuf v1.28.0
-
-```
-
-对于一个新创建的项目，我们可以在项目文件夹下按照以下步骤操作：
-
-1. 执行`go mod init 项目名`命令，在当前项目文件夹下创建一个`go.mod`文件。
-2. 手动编辑`go.mod`中的require依赖项或执行`go get`自动发现、维护依赖
-
-#### 更新go.mod中依赖版本
-
-tidy        add missing and remove unused modules
-
-```bash
-## 执行升级命令即可： go get -u package_name
-go get -u gopkg.test.com/takumi
-## 指定版本升级
-## 升级到最新的master版本--
-$ go get -u gopkg.test.com/takumi@master
-go: gopkg.test.com/takumi master => v0.15.1-0.20200824075759-de18f05a14bc
-go: downloading gopkg.test.com/takumi v0.15.1-0.20200824075759-de18f05a14b
-
-## 升级完成后，修改go.sum
-## go.mod 和 go.sum文件会被修改，然后git push 更新下仓库
-go mod tidy
-git add . && git commit && git push
-```
-
-end
-
 #### go mod vendor and download：第三方库
 
-核心：go mod vendor将引入的第三方库自动加到go.mod
+go mod vendor将引入的第三方库自动加到go.mod，并将依赖拷贝到当前的vendor目录。
 
-给代码中添加一个第三方库，比如Coredns module，这时IDE会标红提示，因为找不到package，然后我们执行go mod vender下载依赖和更新go.mod
+##### vendor
+
+一般第三方依赖库（包括公司内网gitlab上的依赖库），其源码都不被包含在我们的项目内部，而是在编译的时候go连接公网、内网下载到本地GOPATH，然后编译。
+
+但是当由于网络原因、项目部署便捷性或者依赖库版本丢失等问题，导致下载编译失败时，可以使用`go vendor`命令将项目依赖拷贝到本地目录，直接进行编译避免下载问题。
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/go-mod-vendor.jpg)
 
@@ -177,7 +196,17 @@ vendor      make vendored copy of dependencies
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/go-mod-vendor-2.jpg)
 
-还有部分依赖没有下载，根据最新go.mod依赖执行go mod download
+修改了go.mod后，必须再执行go mod vendor更新vendor目录的缓存
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/go-mod-vendor-4.png)
+
+
+
+##### download
+
+如下还有部分依赖没有下载，根据最新go.mod依赖执行go mod download
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/go-mod-vendor-2.jpg)
 
 download    download modules to local cache
 
@@ -185,11 +214,7 @@ download    download modules to local cache
 
 end
 
-##### vendor？
 
-修改了这个，必须在执行go mod vendor？
-
-![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/go-mod-vendor-4.png)
 
 ### go sum
 

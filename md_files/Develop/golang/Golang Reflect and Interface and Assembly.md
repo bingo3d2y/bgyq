@@ -2,6 +2,107 @@
 
 ### interface
 
+#### Nameless params
+
+There is no way to get the names of the parameters of a method or a function.
+
+The reason for this is because the names are not really important for someone calling a method or a function. What matters is the types of the parameters and their order.
+
+A Function type denotes the set of all functions with the same parameter and result types. The type of 2 functions having the same parameter and result types is identical regardless of the names of the parameters. The following code prints true:
+
+```go
+func f1(a int) {}
+
+func f2(b int) {}
+
+func NamelessParams(int, string) {
+
+	fmt.Println("NamelessParams called")
+
+}
+
+func main()  {
+	fmt.Println(reflect.TypeOf(f1) == reflect.TypeOf(f2))
+	NamelessParams(1, "a")
+}
+
+//output
+true
+NamelessParams called
+```
+
+参数名称对于调用方法或函数的人来说并不重要，重要的是参数的类型及其顺序。
+
+因为只有函数内部才会使用这个函数的参数去执行响应的逻辑。
+
+什么情况下可能会用到 nameless parameters呢
+
+##### 接口声明
+
+如下protoc编译的grpc代码中接口声明的method就使用了nameless parameters
+
+```go
+type HelloServiceServer interface {
+	// 定义方法
+	SayHello(context.Context, *HelloParam) (*HelloResult, error)
+	mustEmbedUnimplementedHelloServiceServer()
+}
+
+type UnimplementedHelloServiceServer struct {
+}
+
+func (UnimplementedHelloServiceServer) SayHello(context.Context, *HelloParam) (*HelloResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SayHello not implemented")
+}
+```
+
+end
+
+##### 兼容性
+
+你写了一个框架/库，如果你要修改或者扩展一个函数的参数列表，必然会破坏版本的兼容性，因为golang不支持函数的重载。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/golang-method-name.jpg)
+
+所以，写框架或者库的时候应该有远见的声明一些带有其他不同类型的参数方法，但是你可能还没有想好变量名，只是确定了方法可能用到的参数类型，这时就会用到Nameless parameters
+
+```go
+// HelloServiceServer is the server API for HelloService service.
+type HelloServiceServer interface {
+    // nameless parameters
+	SayHello(context.Context, *HelloParam) (*HelloResult, error)
+	mustEmbedUnimplementedHelloServiceServer()
+}
+```
+
+end
+
+##### parameters named as `_`
+
+方法或函数声明时，要么使用nameless parameters，要么使用named parameters，不能混合使用。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/golang-name-and-unnamed.jpg)
+
+对于一些不得不命名但又不使用的参数名可以使用`_`来代替。
+
+```go
+func (UnimplementedHelloServiceServer) SayHello(_ context.Context, p *HelloParam) (*HelloResult, error) {
+	return &HelloResult{Result: fmt.Sprintf("%s say %s",p.GetName(),p.GetContext())},nil
+}
+```
+
+Unused variables are always a programming error, whereas it is common to write a function that doesn't use all of its arguments.
+
+One could leave those arguments unnamed (using _), but then that might confuse with functions like
+
+func foo(_ string, _ int) // what's this supposed to do?
+
+The names, even if they're unused, provide important documentation.
+
+
+
+
+
 #### Interface value详解
 
 **从概念上来讲**，interface value 有两部分组成：type 部分是一个 concrete type，vlaue 部分是这个 concrete type 对应的 instance，它们分别称之为 interface value 的 dynamic type 和 dynamic value。
@@ -1167,3 +1268,4 @@ https://www.cnblogs.com/CharmCode/p/14315474.html
 1. https://www.cnblogs.com/Csir/p/9561488.html
 2. https://juejin.cn/post/7061933166717567012
 2. https://halfrost.com/go_interface/
+2. https://blog.csdn.net/weixin_35792468/article/details/112923590
