@@ -4,6 +4,10 @@
 
 OVS 只是一个单机软件，它并没有集群的信息，自己无法了解整个集群的虚拟网络状况，也就无法只通过自己来构建集群规模的虚拟网络。这就好比是单机的 Docker，而 OVN 就相当于是 OVS 的k8s，它提供了一个集中式的 OVS 控制器。这样可以从集群角度对整个网络设施进行编排。同时 OVN 也是新版 OpenStack 中 Neutron 的后端实现，基本可以认为未来的 OpenStack 网络都是通过OVN 来进行控制的。
 
+### L2vni and L3vni
+
+L3 VNI与二层VNI是完全不同的。L2 VNI映射的是一个VLAN，或者一个子网；L3 VNI映射的是一个VRF。
+
 
 
 ### OVS：as Docker
@@ -43,7 +47,7 @@ neutron-server –> neutron-openvswitch –> ovs
 
 ![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/openstack-openvswitch-agent.png)
 
-其他暂且不用深入那么细节，直接理解思路7、9——初始化之后agent会向server请求已有的网络设备（device就可以简单理解为配置的虚拟端口啦）的详细信息来对ovs进行管理，之后对ovs上的device信息提交给server进行更新。在ovs-agent启动初始化之后，在neutron-server跟ovs-agent频繁交互message周期检测ovs上的端口状态（可以在ovs-agent端tail -f /var/log/neutron/openvswitch-agent.log看到周期交互的相关细节）。在周期检查的背后，实际上是ovs-agent代码进入主函数之后持续进行rpc_loop()循环状态检查、更新
+其他暂且不用深入那么细节，直接理解思路7、9——初始化之后agent会向server请求已有的网络设备（device就可以简单理解为配置的虚拟端口啦）的详细信息来对ovs进行管理，之后对ovs上的device信息提交给server进行更新。在ovs-agent启动初始化之后，在neutron-server跟ovs-agent频繁交互message周期检测ovs上的端口状态（可以在ovs-agent端tail -f /var/log/neutron/openvswitch-agent.log看到周期交互的相关细节）。在周期检查的背后，实际上是ovs-agen t代码进入主函数之后持续进行rpc_loop()循环状态检查、更新
 
 
 ```bash
@@ -483,7 +487,10 @@ OVN逻辑流表会由ovn-northd分发给每台机器的ovn-controller，然后ov
        +-------------------------------+     +-------------------------------+
 ```
 
-end 
+OVN引入了两个全新的OVSDB，
+
+- 一个叫Northbound DB（北向数据库，NB），
+- 一个叫Southbound DB（南向数据库，SB）
 
 OVN由以下组件构成：
 
@@ -491,11 +498,11 @@ OVN由以下组件构成：
 
 CMS : Cloud Management System ???   
 
-这是OVN的最终用户（通过其用户和管理员）。与OVN集成需要安装与CMS特定的插件和相关软件（见下文）。OVN最初的目标CMS是OpenStack。我们通常会说一个CMS，但也可能出现多个CMS也可以管理一个OVN的不同部分。
+这是OVN的最终用户（通过其用户和管理员）。与OVN集成需要安装与CMS特定的插件和相关软件。OVN最初的目标CMS是OpenStack。我们通常会说一个CMS，但也可能出现多个CMS也可以管理一个OVN的不同部分。
 
 ##### OVN/CMS插件: adaptor
 
-是连接到OVN的CMS组件。在OpenStack中，**这是一个Neutron插件**。该插件的主要目的是转换CMS中的逻辑网络的配置为OVN可以理解的中间表示。这个组件是必须是CMS特定的，所以对接一个新的CMS需要开发新的插件对接到OVN。所有在这个组件下面的其他组件是与CMS无关的。
+Plugin是连接到OVN的CMS组件。在OpenStack中，**这是一个Neutron插件**。该插件的主要目的是转换CMS中的逻辑网络的配置为OVN可以理解的中间表示。这个组件是必须是CMS特定的，所以对接一个新的CMS需要开发新的插件对接到OVN。所有在这个组件下面的其他组件是与CMS无关的。
 
 从 OVN 的架构可以看出，OVN 里面数据的读写都是通过`OVSDB`来做的，**取代了** Neutron 的消息队列机制，所以有了 OVN 之后，Neutron 里面所有的 agent 都不需要了，Neutron 变成了一个 API server 来处理用户的 REST 请求，其他的功能都交给 OVN 来做，只需要在 Neutron 里面加一个 plugin 来调用配置 OVN。
 
@@ -601,6 +608,290 @@ ovn-controller是每个hypervisor和软件网关上的OVN代理。
 
 end
 
+##### HV
+
+HV是Hypervisor ...
+
+##### OVN Chassis
+
+ Chassis 是 OVN 新增的概念，Chassis 是HV/VTEP 网关。Chassis 的信息保存在 Southbound DB 里面，由 ovn-controller/ovn-controller-vtep 来维护。
+
+##### OVN Tunnel
+
+  OVN 支持的 tunnel 类型有三种，分别是 Geneve，STT 和 VXLAN。HV 与 HV 之间的流量，只能用 Geneve 和 STT 两种，HV 和 VTEP 网关之间的流量除了用 Geneve 和 STT 外，还能用 VXLAN，这是为了兼容硬件 VTEP 网关，因为大部分硬件 VTEP 网关只支持 VXLAN。虽然 VXLAN 是数据中心常用的 tunnel 技术，但是 VXLAN header 是固定的，只能传递一个 VNID（VXLAN network identifier），如果想在 tunnel 里面传递更多的信息，VXLAN 实现不了。所以 OVN 选择了 Geneve 和 STT，Geneve 的头部有个 option 字段，支持 TLV 格式，用户可以根据自己的需要进行扩展，而 STT 的头部可以传递 64-bit 的数据，比 VXLAN 的 24-bit 大很多。
+
+  OVN tunnel 封装时使用了三种数据：
+
+- Logical datapath identifier（逻辑的数据通道标识符）：datapath 是 OVS 里面的概念，报文需要送到 datapath 进行处理，一个 datapath 对应一个 OVN 里面的逻辑交换机或者逻辑路由器，类似于 tunnel ID。这个标识符有 24-bit，由 ovn-northd 分配的，全局唯一，保存在 Southbound DB 里面的表 Datapath_Binding 的列 tunnel_key 里。
+- Logical input port identifier（逻辑的入端口标识符）：进入 logical datapath 的端口标识符，15-bit 长，由 ovn-northd 分配的，在每个 datapath 里面唯一。它可用范围是 1-32767，0 预留给内部使用。保存在 Southbound DB 里面的表 Port_Binding 的列 tunnel_key 里。
+- Logical output port identifier（逻辑的出端口标识符）：出 logical datapath 的端口标识符，16-bit 长，范围 0-32767 和 logical input port identifier 含义一样，范围 32768-65535 给组播组使用。对于每个 logical port，input port identifier 和 output port identifier 相同。
+
+   如果 tunnel 类型是 Geneve，Geneve header 里面的 VNI 字段填 logical datapath identifier，Option 字段填 logical input port identifier 和 logical output port identifier，TLV 的 class 为 0xffff，type 为 0，value 为 1-bit 0 + 15-bit logical input port identifier + 16-bit logical output port identifier。
+
+OVS 的 tunnel 封装是由 Openflow 流表来做的，所以 ovn-controller 需要把这三个标识符写到本地 HV 的 Openflow flow table 里面，对于每个进入 br-int 的报文，都会有这三个属性，logical datapath identifier 和 logical input port identifier 在入口方向被赋值，分别存在 openflow metadata 字段和 Nicira 扩展寄存器 reg14 里面。报文经过 OVS 的 pipeline 处理后，如果需要从指定端口发出去，只需要把 Logical output port identifier 写在 Nicira 扩展寄存器 reg15 里面。
+
+   **OVN tunnel 里面所携带的 logical input port identifier 和 logical output port identifier 可以提高流表的查找效率，OVS 流表可以通过这两个值来处理报文，不需要解析报文的字段。** OVN 里面的 tunnel 类型是由 HV 上面的 ovn-controller 来设置的，并不是由 CMS 指定的，并且 OVN 里面的 tunnel ID 又由 OVN 自己分配的，所以用 neutron 创建 network 时指定 tunnel 类型和 tunnel ID（比如 vnid）是无用的，OVN 不做处理。
+
+
+
+#### OVN Overlay:heavy_check_mark:
+
+OVN 支持三种隧道模式，Geneve，STT 和 VxLAN，但是其中 VxLAN 并不是什么情况下就能用的，Hypervisor 到 Hypervisor 之间的隧道模式只能走 Geneve 和 STT，到 GW 和 Vtep GW 的隧道才能用 VxLAN。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/geneve-vxlan.jpg)
+
+##### Why Geneve & STT
+
+核心：STT和Geneve可以携带Metadata方便路由、HV直接传输数据，OVS 流表可以通过这两个值来处理报文，不需要解析报文的字段。
+
+因为只有 STT 和 Geneve 支持携带大于 32bit 的 Metadata，VxLAN 并不支持这一特性。并且 STT 和 Geneve 支持使用随机的 UDP 和 TCP 源端口，这些包在 ECMP 里更容易被分布到不同的路径里，VxLAN 的固定端口很容易就打到一条路径上了。
+
+STT 由于是 fake 出来的 TCP 包，网卡只要支持 TSO，就很容易达到高性能。VxLAN 现在一般网卡也都支持 Offloading 了，但是就笔者经验，可能还有各种各样的问题。Geneve 比较新，也有新网卡支持了.
+
+##### Geneve in OVN:factory:
+
+OVSDB 里的 Geneve tunnel 长这样
+
+```
+Port "ovn-711117-0"
+            Interface "ovn-711117-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.18.3.153"}
+```
+
+key=flow 含义是 VNI 由 flow 来决定。
+
+拿一个 OVN 里的 Geneve 包来举例
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/geneve-package.png)
+
+OVN 使用了 VNI 和 Options 来携带了 Metadata，其中
+
+###### Logical Datapath as VNI
+
+VNI 使用了 Logical Datapath，也就是 0xb1, 这个和 southbound database 里 datapath_binding 表里的 tunnel key 一致
+
+```
+_uuid               : 8fc46e14-1c0e-4129-a123-a69bf093c04e
+external_ids        : {logical-switch="182eaadd-2cc3-4ff3-9bef-3793bb2463ec", name="neutron-f3dc2e30-f3e8-472b-abf8-ed455fc928f4"}
+tunnel_key          : 177
+```
+
+###### Options
+
+Options 里携带了一个 OVN 的 TLV，其中 Option Data 为 0001002，其中第一个 0 是保留位。后面的 001 和 002 是 Logical Inpurt Port 和 Logical Output Port，和 southbound database 里的 port_biding 表里的 tunnel key 一致。
+
+```
+_uuid              : e40c929d-1997-4fac-bad3-867996eebd03
+chassis            : 869e09ab-d47e-4f18-8562-e28692dc0b39
+datapath           : 8fc46e14-1c0e-4129-a123-a69bf093c04e
+logical_port       : "dedf0130-50eb-480d-9030-13b826093c4f"
+mac                : ["fa:16:3e:ae:9a:b6 192.168.7.13"]
+options            : {}
+parent_port        : []
+tag                : []
+tunnel_key         : 1
+type               : ""
+
+_uuid              : b410ed4b-de0f-4d66-9815-1ea56b0a833c
+chassis            : be5e84f9-3d01-431b-bdfa-208411c102c9
+datapath           : 8fc46e14-1c0e-4129-a123-a69bf093c04e
+logical_port       : "a3347aa1-a8fb-4e30-820c-04c7e1459dd3"
+mac                : ["fa:16:3e:01:73:be 192.168.7.14"]
+options            : {}
+parent_port        : []
+tag                : []
+tunnel_key         : 2
+type               : ""
+```
+
+###### Show Me The Code
+
+在 ovn/controller/physical.h 中，定义 Class 为 0x0102 和 type 0x80，可以看到和上图一致。
+
+```c
+#define OVN_GENEVE_CLASS 0x0102  /* Assigned Geneve class for OVN. */
+#define OVN_GENEVE_TYPE 0x80     /* Critical option. */
+#define OVN_GENEVE_LEN 4
+```
+
+在 ovn/controller/physical.c 中，可以看到 ovn-controller 在 encapsulation 的时候，如果是 Geneve，会把 datapath 的 tunnel key 放到 MFF_TUN_ID 里，outport 和 inport 放到 mff_ovn_geneve 里。
+
+```c
+static void
+put_encapsulation(enum mf_field_id mff_ovn_geneve,
+                  const struct chassis_tunnel *tun,
+                  const struct sbrec_datapath_binding *datapath,
+                  uint16_t outport, struct ofpbuf *ofpacts)
+{
+    if (tun->type == GENEVE) {
+        put_load(datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts);
+        put_load(outport, mff_ovn_geneve, 0, 32, ofpacts);
+        put_move(MFF_LOG_INPORT, 0, mff_ovn_geneve, 16, 15, ofpacts);
+    } else if (tun->type == STT) {
+        put_load(datapath->tunnel_key | (outport << 24), MFF_TUN_ID, 0, 64,
+                 ofpacts);
+        put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID, 40, 15, ofpacts);
+    } else if (tun->type == VXLAN) {
+        put_load(datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts);
+    } else {
+        OVS_NOT_REACHED();
+    }
+}
+```
+
+在头文件定义里，可以看到 MFF_TUN_ID 就是 VNI
+
+```c
+/* "tun_id" (aka "tunnel_id").
+     *
+     * The "key" or "tunnel ID" or "VNI" in a packet received via a keyed
+     * tunnel.  For protocols in which the key is shorter than 64 bits, the key
+     * is stored in the low bits and the high bits are zeroed.  For non-keyed
+     * tunnels and packets not received via a tunnel, the value is 0.
+     *
+     * Type: be64.
+     * Maskable: bitwise.
+     * Formatting: hexadecimal.
+     * Prerequisites: none.
+     * Access: read/write.
+     * NXM: NXM_NX_TUN_ID(16) since v1.1.
+     * OXM: OXM_OF_TUNNEL_ID(38) since OF1.3 and v1.10.
+     * Prefix lookup member: tunnel.tun_id.
+     */
+
+    MFF_TUN_ID,
+```
+
+end
+
+#### OVN实践
+
+##### 搭建ovn环境
+
+1. 部署ovs
+
+   https://hub.docker.com/r/openvswitch/ovs
+
+    ovsdb-server
+
+2. 部署ovn组件
+
+   https://hub.docker.com/r/openvswitch/ovn
+
+   ovn-nb、ovn-sb、ovn-northd和ovn-controller
+
+如下，容器部署不行，因为root filesystem隔离？
+
+```bash
+# ovs
+# need privileged to create namespace
+docker run -itd --privileged --net=host --name=ovsdb-server openvswitch/ovs:2.11.2_debian ovsdb-server
+docker run -itd --net=host --name=ovs-vswitchd --volumes-from=ovsdb-server --privileged openvswitch/ovs:2.11.2_debian ovs-vswitchd
+
+
+# ovn
+docker run -itd --net=host --name=ovn-nb -v /var/run/ovn/:/var/run/ovn/  openvswitch/ovn:2.12_e60f2f2_debian_master ovn-nb
+docker run -itd --net=host --name=ovn-sb -v /var/run/ovn/:/var/run/ovn/ openvswitch/ovn:2.12_e60f2f2_debian_master ovn-sb
+docker run -itd --net=host --name=ovn-northd -v /var/run/ovn/:/var/run/ovn/ openvswitch/ovn:2.12_e60f2f2_debian_master ovn-northd
+
+
+docker run -itd --net=host --name=ovn-nb openvswitch/ovn:2.12_e60f2f2_debian_master ovn-nb-tcp
+docker run -itd --net=host --name=ovn-sb openvswitch/ovn:2.12_e60f2f2_debian_master ovn-sb-tcp
+docker run -itd --net=host --name=ovn-northd openvswitch/ovn:2.12_e60f2f2_debian_master ovn-northd-tcp
+```
+
+Ubuntu安装ovn环境
+
+```bash
+apt-get -y install build-essential fakeroot
+apt-get install python-six openssl -y
+apt-get install openvswitch-switch openvswitch-common -y
+apt-get install ovn-central ovn-common ovn-host -y
+apt-get install ovn-host ovn-common -y
+
+
+```
+
+
+
+##### 创建logical vswitch:fire:
+
+进入ovn-nb容器创建ovn logical switch
+
+```bash
+# create logical switch
+# ls-add [SWITCH]           create a logical switch named SWITCH
+$ ovn-nbctl ls-add ls1
+# ls-list                   print the names of all logical switches
+$ ovn-nbctl ls-list
+59d643df-a15b-4423-98e0-0e9ff0c0a999 (ls1)
+
+# lsp-add SWITCH PORT       add logical port PORT on SWITCH
+# lsp-set-addresses PORT [ADDRESS]...  set MAC or MAC+IP addresses for PORT.
+#  lsp-set-port-security PORT [ADDRS]... set port security addresses for PORT.
+$ ovn-nbctl lsp-add ls1 ls1-vm1
+$ ovn-nbctl lsp-add ls1 ls1-vm2
+$ ovn-nbctl lsp-set-addresses ls1-vm1 00:00:00:00:00:01
+$ ovn-nbctl lsp-set-addresses ls1-vm2 00:00:00:00:00:02
+$ ovn-nbctl lsp-set-port-security ls1-vm1 00:00:00:00:00:01
+$ ovn-nbctl lsp-set-port-security ls1-vm2 00:00:00:00:00:02                     
+                            
+# show                      print overview of database contents
+$ ovn-nbctl show
+switch 59d643df-a15b-4423-98e0-0e9ff0c0a999 (ls1)
+    port ls1-vm2
+        addresses: ["00:00:00:00:00:02"]
+    port ls1-vm1
+        addresses: ["00:00:00:00:00:01"]
+        
+```
+
+end
+
+##### reinstall ovs
+
+ del-dp DP                delete local datapath DP
+
+datapath？？？
+
+```bash
+> > I want to remove openvswitch from my platform and reinstall it with
+> correct
+> > configuration.
+> >
+> > Have removed all the packages. but i could still see
+> >
+> > ovs-system: flags=4098<BROADCAST,MULTICAST>  mtu 1500
+> >         ether ea:a6:8d:26:10:7e  txqueuelen 0  (Ethernet)
+> >         RX packets 0  bytes 0 (0.0 B)
+> >         RX errors 0  dropped 0  overruns 0  frame 0
+> >         TX packets 0  bytes 0 (0.0 B)
+> >         TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+>
+> The OVS kernel module most likely comes with your kernel, so you
+> cannot completely remove it. To remove a device like this, you can use
+> ovs-dpctl to delete it then remove the OVS module:
+>
+> # ovs-dpctl del-dp ovs-system
+> # rmmod openvswi
+```
+
+end
+
+##### 连通性测试
+
+```bash
+# add-br BRIDGE               create a new bridge named BRIDGE
+
+
+# create and config vm
+ip netns add vm1
+
+```
+
+end
+
 #### OVN  K8s
 
 https://feisky.gitbooks.io/sdn/content/ovs/ovn-kubernetes.html
@@ -613,9 +904,11 @@ OpenStack [networking-ovn](https://github.com/openstack/networking-ovn) 项目�
 
 OVN 里面报文的处理都是通过 OVS OpenFlow 流表来实现的，而在 Neutron 里面二层报文处理是通过 OVS OpenFlow 流表来实现，三层报文处理是通过 Linux TCP/IP 协议栈来实现
 
-### HV
+### go-ovn
 
-HV是Hypervisor ...
+https://github.com/eBay/go-ovn
+
+
 
 ### 引用
 

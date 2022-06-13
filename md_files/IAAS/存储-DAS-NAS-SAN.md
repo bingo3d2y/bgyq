@@ -2,6 +2,14 @@
 
 github的全文搜索真香--
 
+### HHD and SSD and
+
+传统硬盘（HDD，Hard Disk Drive的缩写）: 即硬盘驱动器，最基本的电脑存储器，我们电脑中常说的电脑硬盘
+
+固态硬盘（Solid State Drive）: 用固态电子存储芯片阵列而制成的硬盘。
+
+混合硬盘（hybrid harddrive，HHD）: 是既包含传统硬盘又有闪存（flashmemory）模块的大容量存储设备。
+
 ### DAS： without any network device
 
 Direct Attached Storage（DAS）是专用的数字存储设备，可通过电缆直接连接到服务器或PC。 

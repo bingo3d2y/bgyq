@@ -263,7 +263,9 @@ end
 
 如果下载的依赖没有被项目的代码直接 import，则会在 `go.mod` 的对应项目中自动添加注释 `// indirect`
 
+go module可以使得项目可以在GOPATH路径外，使用`go mod`命令管理依赖，很方便
 
+> GOPATH目录外的项目，执行`go mod tidy`就可以将go code中的依赖下载到`GOPATH[0]/pkg/`而且记录到当前的go.mod文件中。
 
 Golang 提供一个环境变量 GO111MODULE 来设置是否使用mod，它有3个可选值，分别是off, on, auto（默认值），具体含义如下：
 
