@@ -2,6 +2,88 @@
 
 github的全文搜索真香--
 
+### 存储/数据高可用：复制
+
+数据复制（Replication）是指利用复制软件把数据从一个磁盘复制到另一个磁盘，生成一个数据副本。这个数据副本是数据处理系统直接可以访问的，不需要进行任何的数据恢复操作，这一点是复制与D2D备份的最大区别。
+
+> Disk to Disk,D2D备份技术的设计初衷，旨在**加快**数据备份和容灾恢复的进程。D2D还是依赖数据恢复的操作的。
+
+数据复制依据复制启动点的不同可分为同步复制、异步复制、基于数据增量的复制等几种。
+
+* 同步复制，数据复制是在向主机返回写请求确认信号之前实时进行的；
+* 异步复制，数据复制是在向主机返回写请求确认信号之后实时进行的；
+* 基于数据增量的复制是一种非实时的复制方式，它依据一定的策略（如设定数据变化量门限值、日历安排等）来启动数据复制。
+
+#### 同步复制
+
+数据复制是在向主机返回写请求确认信号之前实时进行的.
+
+应用于最高等级的容灾方案（RPO等于0）中，需要关闭主机Cache来保证数据一致性。对于连接生产中心和灾备中心的链路带宽和QoS要求很高，一般采用光纤直连、波分设备来保证，方案部署成本很高。
+
+#### 异步复制
+
+数据复制是在向主机返回写请求确认信号之后实时进行的
+
+应用于较高级别的容灾方案（RPO接近于0）中，无法有效保证数据一致性（关闭主机中的Cache和快照都不适合）。但对于连接生产中心和灾备中心的链路带宽和QoS要求一般，理论上带宽只要达到“日新增数据量/（24×3600×8）”即可。
+
+#### 增量复制
+
+应用于较高级别的容灾方案（RPO小于1小时）中，可以结合快照技术有效保证数据一致性。对于连接生产中心和灾备中心的链路带宽和QoS要求一般，理论上带宽只要达到“数据增量/复制间隔”即可。
+
+#### 存储双活
+
+**当存储服务器中断时，通过存储仲裁、波分链路，实现存储永不中断**，存储双活架构，为两个数据中心存储同时提供读写服务，且整个存储系统架构全冗余，任意数据中心故障时，另外一个数据中心有一份存储设备和相同数据可用，最大化提高了业务连续性。
+
+#### 数据备份
+
+数据双活也是一直架构设计实现，当然有挂掉的风险，还是需要一份备份的。
+
+一般数据备份采用定期全量备份（如七天），更短周期数据增量备份（如一天或秒级）的方式。具体的实现原理有多种：硬盘分区级的物理备份（硬盘虚机快照等）、文件级的物理备份（Veritas等）、数据库级的逻辑备份（MysqlDump、Oracle DataGuard等）。
+
+### RPO and RTO
+
+RPO（Recovery Point Objective）即数据恢复点目标，主要指的是业务系统所能容忍的数据丢失量。
+
+RTO（Recovery Time Objective）即恢复时间目标，主要指的是所能容忍的业务停止服务的最长时间，也就是从灾难发生到业务系统恢复服务功能所需要的最短时间周期。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/RTO-and-RPO.png)
+
+
+
+
+
+### LUN高可用：热迁移只丢一个包
+
+服务器识别到的最小的存储资源，就是LUN级别的。那么主机的HBA卡看到的存储上的存储资源就主要 靠 两个东西来定位，一个就是存储系统的控制器(Target)，一个就是LUN ID，这个LUN是由存储的控制系统给定的，是存储系统的某部分存储资源。
+
+在给客户部署Hyper-V集群时，遇到一个问题：如果集群中的某台虚机需要访问SAN里的LUN，如何确保其保持高可用性？
+
+以下是该群集的磁盘结构图示：有2个CSV卷，还有2个LUN，将用作虚机的PassTrough磁盘。
+
+在故障转移群集管理器里，给这台虚机添加存储，确保把2个Pass-through磁盘添加到该虚机里。
+
+打开虚机的属性对话框，切换到“依赖关系”标签页，把这两个Pass-through磁盘添加为依赖条件，这样虚机在迁移的时候，会自动带上两个LUN一起迁移。
+
+配置好以后，**这台虚机可以实时迁移，经Ping测试发现，会丢2个包而其他正常虚机会丢1个包），原因是所挂接的这2个Pass-trough磁盘需要重新连接到新的Node上。**
+通常情况下，这并不会有问题，因为只有在对Hyper-V服务器进行维护时，才需要实时迁移。
+如果不希望看到多1个丢包，**可以在虚机里直接用ISCSI Initiator连接这2个LUN，而不要用Pass-trough的方式经由HOST去转接。**
+
+另外，我们还可以修改实时迁移所使用的网络，将其优先设置为使用Live Migration这个网络。
+
+https://blog.51cto.com/markwin/620100
+
+#### multi-LUN管理
+
+**现在，存储网络越来越发达了，一个lun有多条通路可以访问也不是新鲜事了。** 
+服务器使用多个HBA连接到存储网络，存储网络又可能是由多个交换设备组成，而存储系统又可能有多个控制器和链路，lun到服务器的存储网络链路又可能存在着多条不同的逻辑链路。那么，必然的，同一个physical lun在服务器上必然被识别为多个设备。因为os区别设备无非用的是总线，target id，lun id来，只要号码不同，就认为是不同的设备。 
+由于上面的情况，多路径管理软件应运而生了，比如emc的powerpath，这个软件的作用就是让操作系统知道那些操作系统识别到lun实际上是一个真正的physical lun，具体的做法，就是生成一个特别的设备文件，操作系统操作这个特殊的设备文件。而我们知道，设备文件+driver+firmware的一个作用，就是告诉操作系统该怎么使用这个设备。那么就是说，多路径管理软件从driver和设备文件着手，告诉了操作系统怎么来处理这些身份复杂的lun。 
+
+### 精简配置 and 厚配置
+
+使用精简配置时，无限卷的大小不受与其关联的聚合大小的限制。您可以在小容量存储上创建大容量卷，仅在需要时添加磁盘。例如，可以使用一个仅有 250 TB 可用空间的聚合创建一个 500 TB 的卷。聚合提供的存储空间仅在写入数据时才会使用。精简配置也称为聚合过量。
+
+精简配置的另一种替代方案是厚配置（即"完全模式"），它会立即分配物理空间，而不考虑该空间是否已用于数据存储。已分配的空间无法供任何其他卷使用。在使用厚配置时，将在创建卷时从聚合中为卷分配所需的全部空间。
+
 ### HHD and SSD and
 
 传统硬盘（HDD，Hard Disk Drive的缩写）: 即硬盘驱动器，最基本的电脑存储器，我们电脑中常说的电脑硬盘
@@ -9,6 +91,34 @@ github的全文搜索真香--
 固态硬盘（Solid State Drive）: 用固态电子存储芯片阵列而制成的硬盘。
 
 混合硬盘（hybrid harddrive，HHD）: 是既包含传统硬盘又有闪存（flashmemory）模块的大容量存储设备。
+
+### NAND闪存
+
+闪存存储是一种数据存储技术，基于可电子编程的高速内存。顾名思义，闪存存储可以闪速写入数据并执行随机 I/O 操作。
+
+闪存存储采用集成电路技术，是一种固态技术，也就是说，它没有可拆卸的部件。
+
+**比如iPhone。**闪存是16G、64G、128G ROM 断电不影响数据存储。内存是1GB RAM 断电影响数据存储。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/闪存and量子隧道.jpg)
+
+
+
+闪存存储利用一种称为闪存的非易失性内存（非易失性内存标准 (Nonvolatile Memory Express, NVMe）。这种非易失性内存不需要通过供电来维护所存储数据的完整性，因此即使断电，数据也不会丢失。换句话说，当磁盘断电后，非易失性内存不会“忘记”所存储的数据。
+
+#### NVMe
+
+NVMe 是一款用于通过 PCI Express (PCIe) 总线访问闪存存储的接口协议。不同于只能使用单一串行命令序列的传统全闪存架构，NVMe 支持成千上万个并行序列，每一个序列都能支持成千上万个并发命令。
+
+#### NVMe-oF
+
+基于网络的NVMe，NVMe over Fabrics。
+
+NVMe-oF 是存储系统中的一个主机端接口，可以通过远程直接内存访问 (Remote Direct Memory Access, RDMA) 或光纤通道网络结构提供许多相关的 NVMe 功能。利用 NVMe-oF，可以横向扩展到许多 NVMe 设备，甚至支持远距离 NVMe 设备。
+
+#### SCM
+
+存储级内存 ，Storage Class Memory。
 
 ### DAS： without any network device
 
@@ -205,7 +315,7 @@ UUID进行文件系统挂载时，可通过blkid查看分区UUID，通过UUID挂
 ### multipath
 
 服务器端，同一个LUN或WWID或UUID通常对应多个路径，这为服务器访问同一设备提供了多个路径选择，即可提高磁盘设备访问的性能，同时也提供了磁盘设备的高可用性。一般地，一个存储LUN配置路径数的算法为
-LUN绑定某台服务器的HBA数*存储机头数*光纤交换机数
+LUN绑定某台服务器的`HBA数*存储机头数*光纤交换机数`
 通常情况下，存储的一个LUN会绑定服务器的两块HBA，而同一存储服务器里有两台机头，为了冗余也会配备两台交换机，这样，一个LUN的访问路径数为：2\*2\*2=8
 因此，多路径映射后，/dev目录下会有8个/dev/sd*磁盘设备对应同一WWID，对于Lunix自带的multipath，可以通过如下命令查看多路径：
 
@@ -826,11 +936,12 @@ The iSCSI Gateway presents a Highly Available (HA) iSCSI target that exports RAD
 0. https://www.cnblogs.com/zxqstrong/p/4727912.html
 1. https://blog.51cto.com/dcx86team/904499
 2. https://www.jianshu.com/p/82eee3b3010c
-2. https://blog.csdn.net/karamos/article/details/80127024
-2. https://blog.csdn.net/liukuan73/article/details/45506441
-2. https://www.zhihu.com/question/52811023/answer/2183837101
-2. https://www.zhihu.com/question/20131784/answer/28026813
-2. https://www.zhihu.com/question/20131784/answer/90235520
-2. https://blog.51cto.com/u_11107124/1884637
-2. https://blog.csdn.net/Jacky_Feng/article/details/121579494
-2. https://blog.csdn.net/tuning_optmization/article/details/107759698
+3. https://blog.csdn.net/karamos/article/details/80127024
+4. https://blog.csdn.net/liukuan73/article/details/45506441
+5. https://www.zhihu.com/question/52811023/answer/2183837101
+6. https://www.zhihu.com/question/20131784/answer/28026813
+7. https://www.zhihu.com/question/20131784/answer/90235520
+8. https://blog.51cto.com/u_11107124/1884637
+9. https://blog.csdn.net/Jacky_Feng/article/details/121579494
+10. https://blog.csdn.net/tuning_optmization/article/details/107759698
+11. https://bbs.huaweicloud.com/blogs/102289

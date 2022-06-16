@@ -133,6 +133,12 @@ vCUDA的系统架构与NVIDIA的GRID架构类似，采用一个Manager来管理G
 
 
 
+### h3c
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/gpu-vm.jpg)
+
+
+
 ### 引用：
 
 1. https://mechanical-consciousness.com/2020/03/20/kvm-gpu-passthrough.html

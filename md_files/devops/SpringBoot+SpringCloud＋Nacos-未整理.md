@@ -22,6 +22,58 @@ https://www.cnblogs.com/rickiyang/p/12153070.html
 
 https://github.com/Zealon159/light-reading-cloud
 
+### Spring cloud + k8s 服务发现:heavy_check_mark:
+
+https://cloud.tencent.com/developer/article/1900990
+
+发现K8S有服务发现功能(Service),而Spring Cloud也有相应的服务发现(Eureka)功能,这两者的功能是不兼容的,你只能二选一.
+原文: https://www.lixin.help/2021/01/01/K8S-MicroService-Integrate.html
+
+
+
+
+
+pod 注册到spring cloud的地址是pod IP的话，集群外的vm怎么访问这个pod注册的服务。
+
+如果，多副本pod注册的是nodeIP+nodeport，vm是可以访问 pod service，但是多副本pod注册时，会不会出现重复注册呢？？？
+
+so，最简单还是要上都上k8s
+
+
+
+#### 推荐方案
+
+发现K8S有服务发现功能(Service),而Spring Cloud也有相应的服务发现(Eureka)功能,这两者的功能是不兼容的,你只能二选一.
+
+Ingress + Spring Cloud Gateway + Eureka(Zookeeper/Nacos) + 业务微服务:
+
+1. eureka 和 业务微服务,不使用Service(NodePort)功能(也就是不暴露服务,仅内部访问).
+2. 业务微服务 和 Gateway 都向 eureka注册,这时在注册中心的元数据是:PodIP:port.
+3. 而Spring Cloud Gateway通过Service(NodePort)暴露出IP和端口.
+4. Ingress接受请求,全部转发到:Gateway上,再由:Gateway进行分发到业务微服务上.
+5. 优势:不是所有的微服务都要使用Service(NodPort)功能.访方案:占用Node(宿主机)的端口也比较少,对开发比较透明,在开发环境无须依赖K8S,且学习成本比较低.
+6. 原理:相当于Gateway往Nginx的upstream中注册,而Gateway和Pod是在同一网段,自然也能相互访问
+
+
+
+原文: https://www.lixin.help/2021/01/01/K8S-MicroService-Integrate.html
+
+#### consule: 重复注册
+
+http://www.liuhaihua.cn/archives/522516.html
+
+**Spring Cloud中每个实例启动时都会产生一个唯一的InstanceID,**并且通过InstanceID向Consul中进行注册。不同的InstanceID对于Consul而言就代表着不同的服务实例。但是由于目前将Pod网络方式设置成为了HostNetwork。因此只要是相同主机上启动的服务，其访问地址一定是相同的。 但是反复启动时，Spring Cloud注册会生成不同的InstanceID。 这些对于Consul而言不同的Instance。 实际指向了一个相同的Pod网络（都是hostIP）。 在应用反复升级/部署之后，会发现Consul中存在大量的服务实例，而这些服务实例指向的地址都是相同的。对于这些服务Consul会定期调用Health Check去检查服务可用性。 大量的检查项导致Consul性能下降。为此需要一个简单的解决方案，确保在相同主机上运行的Pod实例，在部署/重启/升级后的InstanceID保持一致。
+
+解决：使用
+
+一个简单的方案就是在InstanceID中取出随机值，并且使用当前Pod的IP地址作为标识，例如： service-192-168-1-2。 这种方式可以确保Pod在默认容器网络或者Host网络下可以保持一致的行为
+
+这里通过将当前Pod的IP地址注入到容器实例的环境变量变量中，并且覆盖默认的–spring.cloud.consul.discover.instanceId来确保注册到Consul中的ServieID唯一。
+
+除了podIP以外，K8S还支持从spec，metadata中获取Pod相关的信息
+
+
+
 ### Spring  and Spring Framework
 
 Spring是一个体系，Spring Framework是Spring生态体系的基石。
