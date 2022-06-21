@@ -1,5 +1,11 @@
 ## go modules
 
+### main
+
+一般 `main()`函数写在最前面，然后按函数的调用，开始按顺序声明函数--
+
+`main()`一定要简洁清晰--
+
 ### GOPATH[0]
 
 Python 到 Golang，数据结构的熟悉和最基本的modules管理即类似python 的包管理，不能引用sdk和其他modules等于直接废了。

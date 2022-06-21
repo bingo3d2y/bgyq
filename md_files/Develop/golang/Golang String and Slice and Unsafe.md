@@ -82,9 +82,9 @@ Len:  表示slice的容量
 
 #### slice cap
 
-slice的capability是由它的起始位决定的即[n;m]中`;`前的n决定的和m没关系
+**slice的capability是由它的起始位决定的即[n;m]中`;`前的n决定的和m没关系。**
 
-slice的length是`m-n`的值。
+比如，`s1 := s[:0]`，这表示`s1`的capability是`cap(s)`，而`len(s1)`是0。
 
 ```go
 func main()  {
@@ -101,6 +101,7 @@ func main()  {
 }
 
 // output
+// length 都是2 即 1,2 和 8,9 都是两个元素
 str is [0 1 2 3 4 5 6 7 8 9 10]	,len(str) is 11
 s1 is [1 2]	,cap(s1) is 10	len(s1) is 2
 s2 is [8 9]	,cap(s2) is 3	len(s2) is 2

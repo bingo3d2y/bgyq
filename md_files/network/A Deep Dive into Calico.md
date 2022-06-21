@@ -74,6 +74,217 @@ calico rr 模式下 rr node 通过bgp协议将pod ip网段 与 underlay/overlay 
 
 但是，一个容器组件多个副本会不会注册重复呢？？？比如都注册了 `1.1.1.3:30008`
 
+### calico node as Router
+
+把calico node当作一个Router来看就比较好理解了。
+
+#### calico NAT
+
+https://projectcalico.docs.tigera.io/networking/workloads-outside-cluster
+
+问题：
+
+使用calico作为k8s cni时，pod 访问 k8s 集群外vm使用的是podIP还是nodeIP。
+
+答案：
+
+看网络环境和calico配置
+
+情况①：网络环境中集群外vm没有pod的回程路由，那么比如是要pod访问集群外vm时，使用node IP才可以。
+
+这时，必须要配置calico的`--nat-outgoing`
+
+ The outgoing packets will have their source IP address changed from the pod IP address to the node IP address using SNAT (Source Network Address Translation). 
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: default-ipv4-ippool
+spec:
+  cidr: 192.168.0.0/16
+  natOutgoing: true
+```
+
+
+
+情况②：网络环境中集群外vm有pod的回程路由，这时就可以关闭`--nat-outgoing`使得vm可以直接记录pod的IP
+
+If you choose to implement Calico networking with [BGP peered with your physical network infrastructure](https://projectcalico.docs.tigera.io/networking/bgp), you can use your own infrastructure to NAT traffic from pods to the internet. In this case, you should disable the Calico `natOutgoing` option. For example, if you want your pods to have public internet IPs, you should:
+
+- Configure Calico to peer with your physical network infrastructure
+- Create an IP pool with public IP addresses for those pods that are routed to your network with NAT disabled (`nat-outgoing: false`)
+- Verify that other network equipment does not NAT the pod traffic
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: no-nat-10.0.0.0-8
+spec:
+  cidr: 10.0.0.0/8
+  disabled: true
+```
+
+end
+
+#### calico fix pod IP
+
+真曲线救国，流弊
+
+calico实现"固定podIP"的方式很奇怪，就是额外建一个小的IPpool，然后仅让指定的应用去使用从这个小的IPpool中获取IP地址，从而实现”fixed PODIP“
+
+主要利用`calico`组件的两个`kubernetes`注解`annotations`:
+
+1)`cni.projectcalico.org/ipAddrs`；
+
+2)`cni.projectcalico.org/ipv4pools`。
+
+**Specifying IP pools on a per-namespace or per-pod basis**
+
+In addition to specifying IP pools in the CNI config as discussed above, Calico IPAM supports specifying IP pools per-namespace or per-pod using the following Kubernetes annotations.
+
+- `cni.projectcalico.org/ipv4pools`: A list of configured IPv4 Pools from which to choose an address for the pod.
+
+  Example:
+
+  ```yaml
+   annotations:
+      "cni.projectcalico.org/ipv4pools": "[\"default-ipv4-ippool\"]"
+  ```
+
+- `cni.projectcalico.org/ipv6pools`: A list of configured IPv6 Pools from which to choose an address for the pod.
+
+  Example:
+
+  ```yaml
+   annotations:
+      "cni.projectcalico.org/ipv6pools": "[\"2001:db8::1/120\"]"
+  ```
+
+If provided, these IP pools will override any IP pools specified in the CNI config.
+
+**Requesting a specific IP address**
+
+You can also request a specific IP address through Kubernetes annotations with Calico IPAM. There are two annotations to request a specific IP address:
+
+- `cni.projectcalico.org/ipAddrs`: A list of IPv4 and/or IPv6 addresses to assign to the Pod. The requested IP addresses will be assigned from Calico IPAM and must exist within a configured IP pool.
+
+  Example:
+
+  ```yaml
+   annotations:
+        "cni.projectcalico.org/ipAddrs": "[\"192.168.0.1\"]"
+  ```
+
+- `cni.projectcalico.org/ipAddrsNoIpam`: A list of IPv4 and/or IPv6 addresses to assign to the Pod, bypassing IPAM. Any IP conflicts and routing have to be taken care of manually or by some other system. Calico will only distribute routes to a Pod if its IP address falls within a Calico IP pool. If you assign an IP address that is not in a Calico IP pool, you must ensure that routing to that IP address is taken care of through another mechanism.
+
+  Example:
+
+  ```yaml
+   annotations:
+        "cni.projectcalico.org/ipAddrsNoIpam": "[\"10.0.0.1\"]"
+  ```
+
+  The ipAddrsNoIpam feature is disabled by default. It can be enabled in the feature_control section of the CNI network config:
+
+  ```yaml
+   {
+        "name": "any_name",
+        "cniVersion": "0.1.0",
+        "type": "calico",
+        "ipam": {
+            "type": "calico-ipam"
+        },
+       "feature_control": {
+           "ip_addrs_no_ipam": true
+       }
+   }
+  ```
+
+  end
+
+##### Note
+
+ `ipv4pools`和`ipAddrs` 不可以同时使用。
+
+- The `ipAddrs` and `ipAddrsNoIpam` annotations can’t be used together.
+- You can only specify one IPv4/IPv6 or one IPv4 and one IPv6 address with these annotations.
+- When `ipAddrs` or `ipAddrsNoIpam` is used with `ipv4pools` or `ipv6pools`, `ipAddrs` / `ipAddrsNoIpam` take priority.
+
+##### 银行金融场景
+
+银行网络分区（核心区、生成区，dmz等）分网段（业务网段和数据库网段），不同分区和不同网段的访问都会经过内部防护墙。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/net-arch-toy.jpg)
+
+由于金融行业非常重视业务的安全性，该银行对 Pod IP 有一些典型的场景需求：
+1. Pod IP 对外可见，外部网络可以直接访问；
+2. 银行会在 LB 设备（比如 F5）上直接配置 Pod IP 到 IP Pool 中做负载均衡；
+3.  在网络管控设备上，会直接下发 Pod IP 相关的规则，对业务进行防护（如白名单）
+
+#### 原地升级来实现固定pod IP:OpenKruise
+
+关于Pod如何保持IP地址不变。一开始的思路是在CNI上做努力，很多CNI都在match这个需求。但实际上之所以Pod的IP地址会变，原因是由于Pod在重启是通过Re-Create完成的，在重建的过程中，我们会重新走调度，网络分配等等重新分配。实际上可以在重建(升级)中能使用InPlace的话，就不需要PodIP地址改变了。至少在节点不故障的很长时间内，该Pod地址是不会变化的。这也算一种备选方案。
+
+### Calico BGP
+
+BGP博大精深，Calico只是用了冰山一角。
+
+Calico采用和Flannel host-gw类似的方式，即通过修改主机路由的方式实现容器间的跨主机通信，不同的地方在于Flannel通过flanneld进程逐一添加主机静态路由实现，而Calico则是通过BGP协议实现节点间路由规则的相互学习广播。
+
+#### node-to-node mesh
+
+全互联模式，就是一个BGP Speaker需要与其它所有的BGP Speaker建立bgp连接(形成一个bgp mesh)。
+
+网络中bgp总连接数是按照O(n^2)增长的，有太多的BGP Speaker时，会消耗大量的连接。
+
+#### Route Reflector
+
+RR模式，就是在网络中指定一个或多个BGP Speaker作为Router Reflection，RR与所有的BGP Speaker建立BGP连接。
+
+每个BGP Speaker只需要与RR交换路由信息，就可以得到全网路由信息。
+
+RR则必须与所有的BGP Speaker建立BGP连接，以保证能够得到全网路由信息。
+
+#### IPIP： overlay
+
+Calico使用IPIP实现了k8s node的endpoint peers，这样就可以实现node处于不同的二层网络。
+
+在Host A `10.3.3.3`和Host B `10.4.4.4`间建立ipip隧道，只需要A、B在Layer 3可达即可。
+
+IP in IP是一种把 **IP数据包** 封装进另一个 **IP数据包** 的隧道协议，外层 IP数据包 头部包含了隧道入口点 IP 以及隧道出口点 IP，而内部的 IP数据包 除了TTL的自然递减之外，完全不会改变。
+
+bgp模式必须要求node在同一个二层网络，因为它要保证下一跳是k8s node（即bird node,所以calico类似一种Underlay），不然node上没有集群的pod路由信息。
+
+IP-ip-IP相当于起的Tunnel，完成两个calico-node（bird）的直连，因为如果L 2不可达，那么下一跳的Router可能没有Calico的bgp信息，就导致无法通信了。
+
+
+
+IPIP kind of tunnels is the simplest one. It has the lowest overhead, but can incapsulate only IPv4 unicast traffic, so you will not be able to setup OSPF, RIP or any other multicast-based protocol.
+
+IPIP支撑OSPF、RIP和其他的多播协议。
+
+Tunneling is a way to transform data frames to allow them pass networks with incompatible address spaces or even incompatible protocols. There are different kinds of tunnels: some process only IPv4 packets and some can carry any type of frame. Linux kernel supports 3 tunnel types: IPIP (IPv4 in IPv4), GRE (IPv4/IPv6 over IPv4) and SIT (IPv6 over IPv4). Tunnels are managed with ip program, part of Iproute2:
+
+```bash
+ $ /sbin/ip tunnel help
+ Usage: ip tunnel { add | change | del | show } [ NAME ]
+           [ mode { ipip | gre | sit } ] [ remote ADDR ] [ local ADDR ]
+           [ [i|o]seq ] [ [i|o]key KEY ] [ [i|o]csum ]
+           [ ttl TTL ] [ tos TOS ] [ [no]pmtudisc ] [ dev PHYS_DEV ]
+ 
+ Where: NAME := STRING
+        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        KEY  := { DOTTED_QUAD | NUMBER }
+```
+
+Iproute2 is usually shipped with documentation, of which you need the file ip-tunnels.ps to learn about tunnel management. In Fedora Core 4 it is /usr/share/doc/iproute-2.6.11/ip-tunnels.ps.
+
+
+
 ### calico 架构
 
 calico 的好处是 endpoints 组成的网络是单纯的三层网络，报文的流向完全通过路由规则控制，没有 overlay 等额外开销。
