@@ -20,7 +20,18 @@ why do you use Calico？
 
 #### 问题：
 
-calico初始化说，子网划分为`26`，k8s节点数列多了以后，导致部分node分不到网段。
+calico初始化时，每个calico node子网划分掩码为`26`（`blockSize: 26`）即每个node最多容纳64个pod，k8s节点数列多了以后，导致部分node分不到网段。
+
+calico node数量计算公式：
+
+k8s-pod-cidr为20，默认calico-blockSize是26，则可以容纳`(32-20)-(32-26)`即26-20=6，`2^4=64`个节点。
+
+当集群规模大于这个64时，怎么办呢？两种思路
+
+* 增加新的IP pool：ip 不够了，在加个大段进来继续分配
+* 节点复用现有 IP pool： 每个node占用了一个ip block，但是不一定全部用完，让其他节点可以借用整个ip pool的剩余IP即可。
+
+
 
 #### 解决：
 
@@ -1042,6 +1053,7 @@ items:
     resourceVersion: "3553201"
     uid: 942e9bba-9354-11e9-8482-6c92bf52e922
   spec:
+    ## 默认创建的块可容纳64个地址 (掩码为/26)，不过它是可以自定义的 ..
     blockSize: 26
     cidr: 192.168.0.0/16
     ## 这里设置成CrossSubnet也行
