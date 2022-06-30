@@ -69,6 +69,33 @@ gitlab-ctl restart
 
 这个是client 拉代码的地址，要使用正确
 
+### push code to origin empty project
+
+gitlab搭建好之后，如何推送本地代码到一个gitlab新建且是空的项目中呢？
+
+```bash
+# push but doing nothing
+$ git push
+...
+No refs in common and none specified; doing nothing.
+Perhaps you should specify a branch such as 'master'.
+
+# nice
+$ git push --set-upstream origin master
+Username for 'http://192.168.40.90:21100': root
+Password for 'http://root@192.168.40.90:21100':
+Counting objects: 20, done.
+Delta compression using up to 96 threads.
+Compressing objects: 100% (13/13), done.
+Writing objects: 100% (20/20), 6.45 KiB | 0 bytes/s, done.
+Total 20 (delta 0), reused 0 (delta 0)
+To http://192.168.40.90:21100/root/test.git
+ * [new branch]      master -> master
+
+```
+
+end
+
 ### webhook：在project下
 
 注意呦，webhook是安装project维度区分的，每个project配置单独的webhook...

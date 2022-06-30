@@ -79,9 +79,9 @@ Controls if deployments of and updates to artifacts are allowed
 
 当多个配置文件共存时，注意配置文件生效优先级--
 
+##### 容器部署
 
-
-
+容器部署时，直接挂载一个卷即可，而且默认账密为`admin/admin123`
 
 
 
