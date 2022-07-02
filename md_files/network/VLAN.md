@@ -22,6 +22,11 @@ VLANs use software to emulate separate physical LANs. Each VLAN is thus a separa
 
 3. 交换机如果互联用access模式，不同vlan配置同网段ip是能通讯的，因为Access 模式发送数据包时会去除tag标签。
 
+#### 规则
+
+1. 一个服务器网卡只能属于一个vlan，只能属于一个二层网络
+2. 一个交换机的port可以属于多个vlan，但只有一个pvid
+
 #### SVI：666
 
 数据包从网卡出发，进入access端口被标记，从trunk链路到达网关。网关会对该数据包做检查，并进行重新封装。如果ip与vlan不对应，数据包到达网关会被丢掉。
@@ -439,6 +444,12 @@ Trunk类型的接口的PVID也是可以手动改的。
 在设置PVID和VID时，要保持PVID和VID的一致。譬如：一个端口属于几个VLAN，那么这个端口就会具有好几个VID，但是只能有一个PVID，并且PVID号应该是VID号中的一个，否则交换机不识别。
 
 ##### Trunk Port
+
+如果没有VLAN中继（Trunk），假设两台交换机上分别创建了多个VLAN（VLAN是基于Layer 2的），在两台交换机上相同的VLAN（比如VLAN10）要通信，则需要将交换机A上属于VLAN10的一个端口与交换机B上属于VLAN10的一个端口互连；如果这两台交换机上其它相同VLAN间也需要通信（例如VLAN20、VLAN30），那么就需要在两个交换机之间VLAN20的端口互连，而划分到VLAN30的端口也需要互连，这样不同的交换机之间需要更多的互连线，端口利用率就太低了。
+
+交换机通过trunk功能，事情就简单了，只需要两台交换机之间有一条互连线，将互连线的两个端口设置为trunk模式，这样就可以使交换机上不同VLAN共享这条线路。
+
+
 
 ```bash
 [SW1] interface gigabitEthernet0/0/24
@@ -1043,10 +1054,11 @@ bridge_mappings = physnet1:br-eth2
 1. https://blog.csdn.net/weixin_52122271/article/details/112383249
 2. https://blog.51cto.com/u_13212728/2516078
 3. https://blog.51cto.com/centaurs1987/1437083
-3. https://www.1024sou.com/article/60783.html
-3. https://blog.csdn.net/bunny_nini/article/details/104545978
-3. https://blog.51cto.com/u_15127681/2818076
-3. https://blog.csdn.net/luuJa_IQ/article/details/104134312
-3. https://blog.51cto.com/sevenot/2133771
-3. https://www.cnblogs.com/luoahong/p/7214544.html
+4. https://www.1024sou.com/article/60783.html
+5. https://blog.csdn.net/bunny_nini/article/details/104545978
+6. https://blog.51cto.com/u_15127681/2818076
+7. https://blog.csdn.net/luuJa_IQ/article/details/104134312
+8. https://blog.51cto.com/sevenot/2133771
+9. https://www.cnblogs.com/luoahong/p/7214544.html
+10. https://www.jianshu.com/p/dfe605ca8ca7
 

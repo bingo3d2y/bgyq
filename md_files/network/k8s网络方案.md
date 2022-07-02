@@ -42,6 +42,18 @@ L2的以太网帧：Ethernet frames的Payload包含了IP header和TCP header等�
 
 这个错误的想法，是我没有真正理解OSI模型划分。这导致了我很多概念无法弄清比如：Overlay的L2-in-L4.
 
+### k8s固定IP方案
+
+#### 静态保持
+
+cni插件自动分配，静态保持，应用（deployment）创建出来自动分配一个IP，这个应用升级迭代IP不会改变，但是扩容缩容IP会波动。
+
+#### 手动指定
+
+手动固定IP，创建应用（deployment）时，手动输入指定的容器IP，应用升级过程中IP保持不变。
+
+扩容IP怎么指定呢，需要设计来实现
+
 ### 网络收敛
 
 1. 网络依赖小：仅需NVE间IP可达

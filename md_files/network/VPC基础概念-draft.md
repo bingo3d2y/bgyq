@@ -353,6 +353,82 @@ A NAT Gateway does something similar, but with two main differences:
 1. It allows resources in a private subnet to access the internet (think yum updates, external database connections, wget calls, etc), and
 2. it only works one way. The internet at large cannot get through your NAT to your private resources unless you explicitly allow it.
 
+### VPC 多租户
+
+作为 MP-BGP 的扩展，MP-BGP EVPN 继承了 VPN 通过 VRF 实现的对多租户的支持。
+
+**同一 租户的 VNI 的不同子网，都属于同一个 L3 VRF 。**
+
+在 MP-BGP EVPN 中，多个租户可以共存，它们共享同一个 IP 传输网络（underlay），而 在 VXLAN overlay 网络中拥有独立的 VPN。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/19-mp-bgp-evpn-multi-tenancy.png)
+
+在 VXLAN MP-BGP EVPN spine-and-leaf 网络中，**VNI 定义了二层域**，不允许 L2 流量跨越 VNI 边界。类似地，**VXLAN 租户的三层 segment 是通过 VRF 技术隔离的**，通过将不同 VNI 映射到不同的 VRF 实例来隔离租户的三层网络。每个租户都有自己的 VRF 路由实例。**同一 租户的 VNI 的不同子网，都属于同一个 L3 VRF 。**
+
+#### VRF
+
+VRF：Virtual Routing Forwarding，虚拟路由转发。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/what-is-vrf.png)
+
+举个栗子
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/vrf-case.gif)
+
+假设PC1与R2这一侧的网络属于一个独立的业务；
+
+PC2与R3这一侧的网络属于另一个独立的业务；
+
+由于设备资源有限或者其他方面的原因，这两个独立的业务的相关节点连接在R1上，也就是同一台设备上。
+
+那么在完成相关配置后，R1的路由表如上图所示。
+
+由于，共用一个Router R1导致，PC1可以直接访问R3连接的`3.3.3.0/24`网络。
+
+但是实际上，从业务的角度考虑，我们禁止PC1访问3.3.3.0/24网络。那么怎么办？
+
+两个思路：
+
+* 在增加一个单独的路由器，实现物理隔离（增加成本）
+* 通过ACL规则，实现逻辑隔离 （增加管理成本或可能影响全局的或者不同业务系统有不同的组网需求通过ACL无法满足）
+
+这时，VRF就很有用了，类似虚拟化技术在路由器设备上的应用。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/VRF-solution-1.gif)
+
+在R1上创建两个VRF：VRF1及VRF2，创建完成后，我们可以理解为，拥有了两台虚拟路由器。
+
+当然，刚刚创建两个VRF，现在这两台虚拟路由器上什么也没有。
+
+```bash
+$ system-view
+$ ip vrf vrf-name
+```
+
+接下去我们将GE0/0/1口及GE0/0/2口绑定到VRF1；将GE0/0/3及GE0/0/4口绑定到VRF2。
+
+```bash
+$ interface name
+$ ip vrf forwarding vrf-name
+```
+
+这样这两台虚拟路由器就各自拥有了两个物理接口。这两台虚拟路由器是虽然都在同一台物理设备上，但是却是隔离的，他们将有自己的接口，自己的路由表，自己的ARP表等等相关的内容。路由环境就变成有点像这样：
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/VRF-solution-2.gif)
+
+由上图可以看出，VRF1及VRF2有了自己的接口，也有了自己的路由表。并且相互之间是隔离的。
+现在PC1要发送一个数据包到2.2.2.2，R1从接口GE0/0/1收到了这个数据包，由于此时GE0/0/1已经绑定到了VRF1，因此在执行目的IP的路由查找的时候，查的是VRF1的路由表，查找到匹配的路由条目后，间个数据包从其指示的GE0/0/1口转发给下一跳192.168.100.2。
+
+那么如果PC1要访问3.3.3.3呢？数据包发到了R1，R1从接口GE0/0/1收到了这个数据包，于是它在做路由查找的时候，查的仍然是VRF1的路由表。经过查表后，它发现并无匹配的条目，因此将数据包丢弃。
+
+完美实现了隔离，此外VRF还可以单独配置不同的组网方式：
+
+不同的VRF可以配置不同的路由协议，类似虚拟机可以装不同的操作系统。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/VRF-pro.gif)
+
+
+
 ### VPN and VPC
 
 VPC是Overlay网络，VxLAN-Overlay的建立依赖Tunnel，tunnel就是vpn的体现。
@@ -401,3 +477,4 @@ VPC还可以横跨多个Available Zone
 ### 引用：
 
 1. https://www.sdnlab.com/20510.html（全抄）
+1. https://blog.csdn.net/Kangyucheng/article/details/88051969

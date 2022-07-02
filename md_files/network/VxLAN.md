@@ -167,7 +167,7 @@ VXLAN 网络架构的组件有：
 
 6. **VSI**：Virtual Switch Instance，虚拟交换实例，VTEP 上为一个 VXLAN 提供二层交换服务的虚拟交换实例。VXLAN ID 和VSI 是一对一的关系，所以每增加一个VXLAN ID的二层网络都要有唯一的VSI实例与之对应。
 
-#### 控制平面 control plane
+#### 控制平面 control plane：MP-BGP EVPN
 
  VXLAN flood-and-learn 模型中，**end-host（终端主机学习**和 **VTEP 发现**都是基于数据平面，并没有控制平面来在 VTEP 之间分发 end-host 可达性 信息。
 
@@ -175,7 +175,15 @@ VXLAN 网络架构的组件有：
 
 例如，CE2里面是怎么就有了CE1网络的路由，并且能正常工作。
 
+#### 多租户
 
+作为 MP-BGP 的扩展，MP-BGP EVPN 继承了 VPN 通过 VRF 实现的对多租户的支持。
+
+在 MP-BGP EVPN 中，多个租户可以共存，它们共享同一个 IP 传输网络（underlay），而 在 VXLAN overlay 网络中拥有独立的 VPN。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/19-mp-bgp-evpn-multi-tenancy.png)
+
+在 VXLAN MP-BGP EVPN spine-and-leaf 网络中，**VNI 定义了二层域**，不允许 L2 流量跨越 VNI 边界。类似地，**VXLAN 租户的三层 segment 是通过 VRF 技术隔离的**，通过将不同 VNI 映射到不同的 VRF 实例来隔离租户的三层网络。每个租户都有自己的 VRF 路由实例。同一 租户的 VNI 的不同子网，都属于同一个 L3 VRF 实例，这个 VRF 将租户的三层路由与其他 租户的路由隔离开来。
 
 #### 实现VxLAN-Overlay报文模式
 
