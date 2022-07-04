@@ -27,6 +27,190 @@ VLANs use software to emulate separate physical LANs. Each VLAN is thus a separa
 1. 一个服务器网卡只能属于一个vlan，只能属于一个二层网络
 2. 一个交换机的port可以属于多个vlan，但只有一个pvid
 
+#### VLAN自动学习:star2: gvrp
+
+**VLAN只是交换机上的元数据**，需要在N个交换机上下发，然后才能把switch port配置到交换机上vlan。
+
+也是哇，一个vlan缩小广播域，它的网段地址在一个交换机上肯定用不完，所以需要在多个交换机上配置...
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/switch-and-vlan.jpg)
+
+##### GVRP 原理
+
+GVRP协议可以实现VLAN属性的自动注册和注销：
+
+- VLAN的注册：指的是将端口加入VLAN。
+- VLAN的注销：指的是将端口退出VLAN。
+
+GVRP协议通过声明和回收声明实现VLAN属性的注册和注销。
+
+- 当端口接收到一个VLAN属性声明时，该端口将注册该声明中包含的VLAN信息（端口加入VLAN）。
+- 当端口接收到一个VLAN属性的回收声明时，该端口将注销该声明中包含的VLAN信息（端口退出VLAN）。
+
+GVRP协议的属性注册和注销仅仅是对于接收到GVRP协议报文的端口而言的
+
+一个端口可以属于N个vlan，为了实现多vlan通讯，需要配置为trunk。
+
+##### GVRP注册模式
+
+手工配置的VLAN称为静态VLAN，通过GVRP协议创建的VLAN称为动态VLAN。GVRP有三种注册模式，不同的模式对静态VLAN和动态VLAN的处理方式也不同。GVRP的三种注册模式分别定义如下：
+
+- Normal模式：允许动态VLAN在端口上进行注册，同时会发送静态VLAN和动态VLAN的声明消息。
+- **Fixed模式**：不允许动态VLAN在端口上注册，只发送静态VLAN的声明消息。
+- Forbidden模式：不允许动态VLAN在端口上进行注册，同时删除端口上除VLAN1外的所有VLAN，只发送VLAN1的声明消息。
+
+##### GVRP应用场景
+
+GVRP特性使得不同设备上的VLAN信息可以由协议动态维护和更新，用户只需要对少数设备进行VLAN配置即可应用到整个交换网络，无需耗费大量时间进行拓扑分析和配置管理。如图12-9所示所有设备都使能GVRP功能，设备之间相连的端口均为Trunk端口，并允许所有VLAN通过。只需在SwitchA和SwitchC上分别**手工配置静态VLAN100～VLAN1000**，设备SwitchB就可以通过GVRP协议学习到这些VLAN，最后各设备上都存在VLAN100～1000。
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/gvrp-case.png)
+
+
+
+##### GVRP组网实验
+
+
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/gvrp.png)
+
+组网需求：
+如上图所示，公司A、公司A的分公司以及公司B之间有较多的交换设备相连，需要通过GVRP功能，实现VLAN的动态注册。
+
+* 公司A的分公司与总部通过SwitchA和SwitchB互通；
+
+* 公司B通过SwitchB和SwitchC与公司A互通，但只允许公司B配置的VLAN通过。
+
+配置思路：
+
+使能GVRP功能，实现VLAN的动态注册。
+
+公司A的所有交换机配置GVRP功能并配置接口注册模式为Normal，以简化配置。
+
+公司B的所有交换机配置GVRP功能并将与公司A相连的接口的注册模式配置为Fixed，以控制只允许公司B配置的VLAN通过。
+
+配置完成后，公司A的分公司用户可以与总部互通，公司A属于VLAN101～VLAN200的用户可以与公司B用户互通。
+
+配置交换机A
+
+```bash
+# 全局使能GVRP功能。
+<HUAWEI> system-view
+[HUAWEI] sysname SwitchA
+[SwitchA] vcmp role silent
+[SwitchA] gvrp
+
+# 配置接口为Trunk类型，并允许所有VLAN通过。
+[SwitchA] interface gigabitethernet 0/0/1
+[SwitchA-GigabitEthernet0/0/1] port link-type trunk
+## 或者port trunk allow-pass vlan 2 to 4094
+[SwitchA-GigabitEthernet0/0/1] port trunk allow-pass vlan all
+[SwitchA-GigabitEthernet0/0/1] quit
+[SwitchA] interface gigabitethernet 0/0/2
+[SwitchA-GigabitEthernet0/0/2] port link-type trunk
+[SwitchA-GigabitEthernet0/0/2] port trunk allow-pass vlan all
+[SwitchA-GigabitEthernet0/0/2] quit
+
+# 使能接口的GVRP功能，并配置接口注册模式。
+[SwitchA] interface gigabitethernet 0/0/1
+[SwitchA-GigabitEthernet0/0/1] gvrp
+[SwitchA-GigabitEthernet0/0/1] gvrp registration normal
+[SwitchA-GigabitEthernet0/0/1] quit
+[SwitchA] interface gigabitethernet 0/0/2
+[SwitchA-GigabitEthernet0/0/2] gvrp
+[SwitchA-GigabitEthernet0/0/2] gvrp registration normal
+[SwitchA-GigabitEthernet0/0/2] quit
+```
+
+配置交换机B
+
+```bash
+## 使用全局GVRP
+<HUAWEI> system-view
+[HUAWEI] sysname SwitchB
+[SwitchB] vcmp role silent
+[SwitchB] gvrp
+
+# 配置接口为Trunk类型，并允许所有VLAN通过。
+[SwitchB] interface gigabitethernet 0/0/1
+[SwitchB-GigabitEthernet0/0/1] port link-type trunk
+## 或者写 port trunk allow-pass vlan 2 to 4094
+[SwitchB-GigabitEthernet0/0/1] port trunk allow-pass vlan all
+[SwitchB-GigabitEthernet0/0/1] quit
+[SwitchB] interface gigabitethernet 0/0/2
+[SwitchB-GigabitEthernet0/0/2] port link-type trunk
+[SwitchB-GigabitEthernet0/0/2] port trunk allow-pass vlan all
+[SwitchB-GigabitEthernet0/0/2] quit
+
+# 使能接口的GVRP功能，并配置接口注册模式。
+[SwitchB] interface gigabitethernet 0/0/1
+[SwitchB-GigabitEthernet0/0/1] gvrp
+[SwitchB-GigabitEthernet0/0/1] gvrp registration normal
+[SwitchB-GigabitEthernet0/0/1] quit
+[SwitchB] interface gigabitethernet 0/0/2
+[SwitchB-GigabitEthernet0/0/2] gvrp
+[SwitchB-GigabitEthernet0/0/2] gvrp registration normal
+[SwitchB-GigabitEthernet0/0/2] quit
+```
+
+配置交换机C
+
+```bash
+# 创建VLAN101～VLAN200。这就是静态路由声明？
+<HUAWEI> system-view
+[HUAWEI] sysname SwitchC
+[SwitchC] vlan batch 101 to 200
+
+# 全局使能GVRP功能。
+[SwitchC] vcmp role silent
+[SwitchC] gvrp
+
+
+# 配置接口为Trunk类型，并允许所有VLAN通过。
+[SwitchC] interface gigabitethernet 0/0/1
+[SwitchC-GigabitEthernet0/0/1] port link-type trunk
+[SwitchC-GigabitEthernet0/0/1] port trunk allow-pass vlan all
+[SwitchC-GigabitEthernet0/0/1] quit
+[SwitchC] interface gigabitethernet 0/0/2
+[SwitchC-GigabitEthernet0/0/2] port link-type trunk
+[SwitchC-GigabitEthernet0/0/2] port trunk allow-pass vlan all
+[SwitchC-GigabitEthernet0/0/2] quit
+
+# 使能接口的GVRP功能，并配置接口注册模式。
+[SwitchC] interface gigabitethernet 0/0/1
+[SwitchC-GigabitEthernet0/0/1] gvrp
+[SwitchC-GigabitEthernet0/0/1] gvrp registration fixed
+[SwitchC-GigabitEthernet0/0/1] quit
+[SwitchC] interface gigabitethernet 0/0/2
+[SwitchC-GigabitEthernet0/0/2] gvrp
+[SwitchC-GigabitEthernet0/0/2] gvrp registration normal
+[SwitchC-GigabitEthernet0/0/2] quit
+```
+
+配置完成后，公司A的分公司用户可以与总部互通，公司A属于VLAN101～VLAN200的用户可以与公司B用户互通。
+
+
+
+#### VRRP 高可用VLAN gw
+
+董哥说的正好，vlan才会涉及到gateway，而是平时pc配置的网关`192.168.1.254`，其实是个VIP，它可能是两个交换机上的`192.168.1.253`和`192.168.1.252`。
+
+**通常，同一网段内的所有主机上都存在一条相同的、以网关为下一跳的缺省路由。主机发往其他网段的报文将通过缺省路由发往网关，再由网关进行转发，从而实现主机与外部网络的通信。当网关发生故障时，本网段内所有以网关为缺省路由的主机将无法与外部网络通信。增加出口网关是提高系统可靠性的常见方法，此时如何在多个出口之间进行选路就成为需要解决的问题。**
+
+> keepalived就是基于vrrp实现的。网络yyds...
+
+VRRP的出现很好的解决了这个问题。VRRP能够在不改变组网的情况下，采用将多台路由设备组成一个虚拟路由器，通过配置虚拟路由器的IP地址为默认网关，实现默认网关的备份。当网关设备发生故障时，VRRP机制能够选举新的网关设备承担数据流量，从而保障网络通信的可靠性。
+
+在配置VRRP备份组内各交换机时，建议将Backup配置为立即抢占，即不延迟（延迟时间为0），而将Master配置为延时抢占，并且配置15秒以上的延迟时间。这样配置的目的是为了在网络环境不稳定时，在上下行链路的状态恢复一致性期间等待一定时间，避免由于双方频繁抢占导致用户设备学习到错误的Master设备地址而导致流量中断问题。
+
+- 抢占模式：在抢占模式下，如果Backup设备的优先级比当前Master设备的优先级高，则主动将自己切换成Master。
+- 非抢占模式：在非抢占模式下，只要Master设备没有出现故障，Backup设备即使随后被配置了更高的优先级也不会成为Master设备。
+
+
+
+
+
+
+
 #### SVI：666
 
 数据包从网卡出发，进入access端口被标记，从trunk链路到达网关。网关会对该数据包做检查，并进行重新封装。如果ip与vlan不对应，数据包到达网关会被丢掉。

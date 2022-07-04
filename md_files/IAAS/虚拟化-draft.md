@@ -31,8 +31,102 @@
 * VLAN：在物理交换机Trunk端口允许的vlan id范围内随便选择一个应用到虚拟机上，虚拟机可以与其他虚拟机及物理网络通讯。
 * VLAN 中继(trunk)：将虚拟网卡所链接的虚拟交换机端口也设置成trunk？？？
 
+##### 类似kvm vlan的实现吧
 
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/kvm-vlan.png)
+
+
+
+* 宿主机的网卡eth0配置成了Tunk模式，用于和交换机互联，当然交换机的接入端也需要配置成trunk模式
+
+* 子接口eth0.10和eth0.20配置成access port，vlanid分别是10和20，并接入不同的网桥。
+
+* 虚拟机的vnet端接入不同的网桥，就实现了不同虚拟机在不同的vlan
+
+```bash
+# more /etc/sysconfig/network-scripts/ifcfg-eth0
+DEVICE=bond0
+TYPE=Ethernet
+BOOTPROTO=static
+ONBOOT=yes
+# more /etc/sysconfig/network-scripts/ifcfg-eth0.10
+DEVICE=eth0.10
+TYPE=Ethernet
+BOOTPROTO=static
+ONBOOT=yes
+VLAN=yes
+
+```
+
+end
+
+### OVS vlan组网｛转载｝
+
+https://www.sdnlab.com/20196.html
+
+在OVS中，VLAN的概念和普通交换机一样，不同的是，在OVS中可以通过流表进行VLAN值的修改，这就使得VLAN在OVS中的应用更加灵活。本文通过举例两种基本的应用场景讲述OVS中的VLAN实现，其中场景一和普通交换机工作原理相同，通过access进行设置vlan tag，通过trunk进行转发vlan报文来完成vlan组网；场景二使用OVS的流表进行vlan id的转换来完成vlan的组网。
+
+#### 传统方式设置vlan tag
+
+如下图所示，多台PC设备分别接入不同的SDN交换机，通过vxlan隧道组成大二层网络。其中交换机中的eth1和eth2两个桥端口用于接入PC，vxlan端口通过eth0接入Internet并完成隧道封装和传输，OVS通过VLAN组网把PC1和PC2划分为VLAN 100，把PC3和PC4换分为VLAN 200，从而实现二层的网络隔离。
+
+
+
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/OVS-VxLan-fig-1.png)
+
+```bash
+ovs-vsctl add-br br-eth
+ovs-vsctl add-port br-eth eth0
+ovs-vsctl add-port br-tap tap1
+ovs-vsctl add-port br-tap tap2
+## 设置vlan tag
+ovs-vsctl set Port tap1 tag=100
+ovs-vsctl set Port tap2 tag=200
+
+ovs-vsctl add-port br-eth patch-eth -- set interface patch-eth type=patch options:peer=patch-tap
+ovs-vsctl add-port br-tap patch-tap -- set interface patch-tap type=patch options:peer=patch-eth
+```
+
+
+
+#### OVS流表转换实现vlan组网
+
+这种场景下，接入OVS的某些端口报文自身带有vlan，而转发出去的OVS对应端口需要转换成其它vlan值（类似于OpenStack网络服务中的VLAN网络模式，好举例），用下图所示的组网进行实验测试，其中接入eth0端口的物理链路报文分别带有vlan 100和200，对应的内部虚拟主机VM1和VM2分别使用vlan 1和2进行网络隔离，这里采用OVS完成vlan100和vlan1，vlan200和vlan2的内外部vlan tag的转换。
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/OVS-VxLan-fig-4.png)
+
+##### 实现原理
+
+为了实现vlan的转换对应关系，我们用OVS建立两个桥，一个桥用于转换进入的vlan100和vlan200报文为vlan1和vlan2报文，另个一桥用于转换进入的vlan1和vlan2报文为vlan100和vlan200，两个OVS桥采用patch port进行连接，vlan的转换采用流表实现，网络结构图如下所示：
+![](https://image-1300760561.cos.ap-beijing.myqcloud.com/bgyq-blog/OVS-VxLan-fig-5.png)
+
+```bash
+ovs-vsctl add-br br-eth
+ovs-vsctl add-port br-eth eth0
+ovs-vsctl add-port br-tap tap1
+ovs-vsctl add-port br-tap tap2
+# 设置接口vlan ID即转换后的vlan id
+ovs-vsctl set Port tap1 tag=1
+ovs-vsctl set Port tap2 tag=2
+
+## 连接网桥
+ovs-vsctl add-port br-eth patch-eth -- set interface patch-eth type=patch options:peer=patch-tap
+ovs-vsctl add-port br-tap patch-tap -- set interface patch-tap type=patch options:peer=patch-eth
+
+## 设置流变转换
+ovs-ofctl add-flow br-eth in_port=1,priority=2,dl_vlan=100,actions=mod_vlan_vid:1,NORMAL
+ovs-ofctl add-flow br-eth in_port=1,priority=2,dl_vlan=100,actions=mod_vlan_vid:1,NORMAL
+ovs-ofctl add-flow br-eth in_port=1,priority=1,actions=drop
+
+ovs-ofctl add-flow br-tap in_port=1,priority=2,dl_vlan=1,actions=mod_vlan_vid:100,NORMAL
+ovs-ofctl add-flow br-tap in_port=2,priority=2,dl_vlan=2,actions=mod_vlan_vid:200,NORMAL
+ovs-ofctl add-flow br-tap in_port=1,priority=1,actions=drop
+ovs-ofctl add-flow br-tap in_port=2,priority=1,actions=drop
+```
+
+end
 
 ### 引用
 
 1. https://www.jianshu.com/p/dfe605ca8ca7
+1. https://zhuanlan.zhihu.com/p/37408055
+1. https://www.sdnlab.com/20196.html
