@@ -22,12 +22,22 @@ VLANs use software to emulate separate physical LANs. Each VLAN is thus a separa
 
 3. 交换机如果互联用access模式，不同vlan配置同网段ip是能通讯的，因为Access 模式发送数据包时会去除tag标签。
 
+#### vlan and cloud plat and vm
+
+vlan是交换机上的元数据，云平台下发虚拟机时给vm指定vlan就是给vm指定网络了。
+
+同vlan在一个网段就能通信了。
+
+这就是云网联动了。
+
 #### 规则
 
 1. 一个服务器网卡只能属于一个vlan，只能属于一个二层网络
 2. 一个交换机的port可以属于多个vlan，但只有一个pvid
 
 #### VLAN自动学习:star2: gvrp
+
+**vlan是交换机上的元数据，云平台下发虚拟机时给vm指定vlan就是给vm指定网络了，同vlan在一个网段就能通信**。
 
 **VLAN只是交换机上的元数据**，需要在N个交换机上下发，然后才能把switch port配置到交换机上vlan。
 

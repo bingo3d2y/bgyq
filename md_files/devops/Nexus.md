@@ -224,9 +224,27 @@ jar：即Java Archive，Java的包，Java编译好之后生成class文件，但�
 
 解压：`jar -xf jar_file_name`
 
-war：Web application Archive，与jar基本相同，但它通常表示这是一个Java的Web应用程序的包，tomcat这种Servlet容器会认出war包并自动部署。
+war：Web application Archive，与jar基本相同，但它通常表示这是一个Java的Web应用程序的包，依赖tomcat这种Servlet容器才能运行war包
 
 使用：`mvn clean package`进行打包
+
+#### war 内置Servlet容器
+
+以前，war包的运行依赖外部的Servlet容器，即要将war包部署在Tomcat Server在配置好server.xml才能正常运行war包应用。
+
+现在，在轻量级和微服务的影响下，web框架（eg：springboot）生成的war包通常已经包含了内置的tomcat servlet容器，可以直接使用`java -jar *.war`运行war包。
+
+当war内置了tomcat servlet而且部署到外部的Tomcat Server环境下，可能导致war无法正常启动运行。
+
+如下例子：
+
+ 项目在intellij idea里配置tomcat可以启动访问, 打成war包丢到tomcat webapps下能启动却访问不了相关的接口
+  这个问题是因为idea会默认将项目以ROOT为目录的文件
+  而丢到tomcat的webapps下面则是解压成你项目名称为目录的文件，和ROOT是同级的
+  为保障springboot war可以在Tomcat webapps目录运行，可以有以下几种解决方案：
+  一：将你的war名称改成作为ROOT.war
+  二：在tomcat的server.xml文件的Host标签内配置\<Context path="/" docBase="project_path" reloadable="true"/>
+  三：用tomcat发布时，将前端请求的路径加上你的项目名称
 
 #### java import and package
 
@@ -255,3 +273,4 @@ package 找不到，package是什么--
 ### 引用
 
 1. https://www.jianshu.com/p/084fd2408d9a
+1. https://www.cxybb.com/article/huofuman960209/105489978

@@ -11,10 +11,10 @@ why do you use Calico？
 ### 学习点：
 
 0. veth pair、proxy-arp、local link address
-
 1. bgp and ipip-patch-bgp
 2. RR and mesh-mesh
 3. network policy
+3. #
 
 ### calico网段不够用:star:
 
@@ -75,7 +75,64 @@ pod_ip_2/32 via host_2_IP
 
 calico的felix组件动态维护这些pod路由。
 
-核心思想应该是，将路由信息元数据再加个host的属性，实现不同node复用用一个网段
+核心思想应该是，将路由信息元数据再加个host的属性，实现不同node复用用一个网段。
+
+### calico修改node blocksize:thinking:
+
+https://projectcalico.docs.tigera.io/networking/change-block-size
+
+思路：
+
+1. 将原有ippool禁用
+
+   ```bash
+   calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"disabled": true}}'
+   ```
+
+2. 新建temp ippool
+
+   ```bash
+   # 或者kubectl apply -f
+   calicoctl apply -f temporary-pool.yaml
+   
+   # verify the temporary pool
+   calicoctl get ippool -o wide
+   ```
+
+3. 删除全部pod，使pod使用temp ippool 地址,并删除default ippool，使原来的路由消失。
+
+   ```bash
+   kubectl delete pod -A --all
+   # backup
+   calico get ippool default-ipv4-ippool -o yaml > /tmp/bk.yaml
+   # clean pre-route info
+   calicoctl delete ippool default-ipv4-ippool
+   ```
+
+4. 禁用 temp ippol，并修改blocksize的原ippool
+
+   ```bash
+   calicoctl patch ippool temporary-pool -p '{"spec": {"disabled": true}}'
+   ```
+
+5. 创建修改block_size后的default ippool，删除全部pod，使pod使用ippool获取地址
+
+   ```bash
+   calicoctl apply -f bk.yaml
+   kubectl delete pod -A --all
+   ```
+
+6. 删除temp ippool
+
+   ```bash
+   calicoctl delete pool temporary-pool
+   ```
+
+**PS**： 删除temp ippool时，不能使用`kubectl delete ippool.projectcalico.org temporary_ippool`来删除，应该使用`calicoctl delete pool temporary-pool `。
+
+因为，k8s 删除这个ippool crd时，calico只会的ippool资源只是不显示temporary_ippool的元数据信息了，但是基于temporary_ippool创建的关联资源并没有清理掉。比如，`ip route`中基于`temporary_ippool`创建的路由不会被删除。
+
+
 
 ### Calico 打通vm 和 容器路由
 
@@ -1935,3 +1992,4 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 4. https://www.v2k8s.com/kubernetes/t/205
 5. https://www.bladewan.com/2020/11/18/calico_ops/
 5. https://tech.ipalfish.com/blog/2020/03/06/kubernetes_container_network/
+5. https://mp.weixin.qq.com/s/tk_Zlt_zVAOX9IhDuGkYFA

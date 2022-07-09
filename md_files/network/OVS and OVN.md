@@ -4,6 +4,13 @@
 
 OVS 只是一个单机软件，它并没有集群的信息，自己无法了解整个集群的虚拟网络状况，也就无法只通过自己来构建集群规模的虚拟网络。这就好比是单机的 Docker，而 OVN 就相当于是 OVS 的k8s，它提供了一个集中式的 OVS 控制器。这样可以从集群角度对整个网络设施进行编排。同时 OVN 也是新版 OpenStack 中 Neutron 的后端实现，基本可以认为未来的 OpenStack 网络都是通过OVN 来进行控制的。
 
+### ovs 问题排查
+
+vlan是交换机上的元数据，云平台下发虚拟机时给vm指定vlan就是给vm指定网络了，同vlan在一个网段就能通信
+**ovs 命令列出所有port 然后抓vm在cvk(虚拟化物理机)上vswitch上的包来分析**
+
+
+
 ### L2vni and L3vni
 
 L3 VNI与二层VNI是完全不同的。L2 VNI映射的是一个VLAN，或者一个子网；L3 VNI映射的是一个VRF。
