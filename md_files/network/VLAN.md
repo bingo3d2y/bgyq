@@ -22,15 +22,25 @@ VLANs use software to emulate separate physical LANs. Each VLAN is thus a separa
 
 3. 交换机如果互联用access模式，不同vlan配置同网段ip是能通讯的，因为Access 模式发送数据包时会去除tag标签。
 
-#### vlan and cloud plat and vm
+#### vlan and ovs and vm
 
 vlan是交换机上的元数据，云平台下发虚拟机时给vm指定vlan就是给vm指定网络了。
 
 同vlan在一个网段就能通信了。
 
+ vm如果是同网段，但是没给该网段增加vlan id，这两个vm也不能通讯，因为ovs-vswitch从host nic出去时，如果物理网络没有相应的vlan ID，就会被physical switch给丢弃
+
 这就是云网联动了。
 
-#### 规则
+Ethernet network for VM data traffic, which will carry VLAN-tagged traffic between VMs. Your physical switch(es) must be capable of forwarding VLAN-tagged traffic and the physical switch ports should operate as VLAN trunks. (Usually this is the default behavior. Configuring your physical switching hardware is beyond the scope of this document.)
+
+##### 具体示例：
+
+cloudos 创建k8s时，新规划了业务网段（新的网段和vlan），但是没有在physical switch上添加放通该vlan id，导致cloudos 下发vm时，给k8s node 分配了同网段的IP，但k8s node之间无法相互访问，导致etcd选举失败。
+
+因为，流量最终是从host nic出去，进入physical switch上流通的。
+
+#### 基础规则
 
 1. 一个服务器网卡只能属于一个vlan，只能属于一个二层网络
 2. 一个交换机的port可以属于多个vlan，但只有一个pvid
@@ -202,7 +212,15 @@ GVRP特性使得不同设备上的VLAN信息可以由协议动态维护和更新
 
 #### VRRP 高可用VLAN gw
 
-董哥说的正好，vlan才会涉及到gateway，而是平时pc配置的网关`192.168.1.254`，其实是个VIP，它可能是两个交换机上的`192.168.1.253`和`192.168.1.252`。
+Imagine VLAN a virtual equivalent of a physical switch. Computers in a VLAN is like getting a physical switch (a “dumb” one, without management) and connecting all computers to it.
+
+Does that have a default gateway? No connection whatsoever. The gateway is a concept present on a higher OSI level. **VLANs (same as switches) exist on OSI layer 2.**
+
+So there is no connection between a VLAN and a gateway other than the fact that they are part of the same structure.
+
+VLANs doesn’t have it’s own default gateway. For inter VLAN routing, a VLAN is connected to a Router( Actually the Switch that creates the VLANs is connected to the router). So if a host in a VLAN needs to connect another host outside(another VLAN or Internet) its VLAN, the connection is established through the router. The router checks if tha destination host is from a VLAN which connected to it or outside the main network. If it is an outsider the router uses its default gateway address to router the traffic to ISP.
+
+跨vlan 通讯才会涉及到gateway，而是平时pc配置的网关`192.168.1.254`，其实是个VIP，它可能是两个交换机上的`192.168.1.253`和`192.168.1.252`。
 
 **通常，同一网段内的所有主机上都存在一条相同的、以网关为下一跳的缺省路由。主机发往其他网段的报文将通过缺省路由发往网关，再由网关进行转发，从而实现主机与外部网络的通信。当网关发生故障时，本网段内所有以网关为缺省路由的主机将无法与外部网络通信。增加出口网关是提高系统可靠性的常见方法，此时如何在多个出口之间进行选路就成为需要解决的问题。**
 

@@ -9,7 +9,31 @@ OVS 只是一个单机软件，它并没有集群的信息，自己无法了解�
 vlan是交换机上的元数据，云平台下发虚拟机时给vm指定vlan就是给vm指定网络了，同vlan在一个网段就能通信
 **ovs 命令列出所有port 然后抓vm在cvk(虚拟化物理机)上vswitch上的包来分析**
 
+### vlan and ovs and libvirt
 
+https://blog.scottlowe.org/2012/11/07/using-vlans-with-ovs-and-libvirt/
+
+https://docs.openvswitch.org/en/latest/howto/vlan/
+
+### ovs port mode
+
+在默认模式下（VLAN_mode没被设置），如果指定了端口的tag属性，那么这个端口就工作在access模式，并且其trunk属性的值应该保持为空。否则，这个port就工作在trunk模式下，如果trunk被指定，则使用指定的trunk值。
+
+#### trunk
+
+trunk模式的端口允许传输所有在其trunk属性中指定的那些VLAN对应的数据包。其他VLAN的数据包就会被丢弃。从trunk模式的端口中进入的数据包其VLAN ID不会发生变化。如果进入的数据包不含有VLAN ID，则该数据包进入交换机后的VLAN为0。从trunk模式的端口出去的数据包，如果VLAN ID不为空，则依然保持该VLAN ID，如果VLAN ID为空，则出去后不再包含802.1Q头部。
+
+#### **access**
+
+access模式的端口只允许不带VLAN的数据包进入，不管数据包的VLAN ID是否与其tag相同，只要含有VLAN ID，这个数据包都会被端口drop。数据包进入access端口后会被打上和端口tag相同的VLAN，而再从access端口出去时，数据包的VLAN会被删除，也就是说从access的端口出去的数据包和进来时一样是不带VLAN的。
+
+#### **native-tagged**
+
+native-tagged端口类似于trunk端口，它们之间的区别是如果进入native-tagged端口的数据包不含有802.1Q头部，即没有指定VLAN，那么该数据包会被当作native VLAN，其VLAN ID由端口的tag指定。
+
+#### native-untagged
+
+native-untagged端口类似于native-tagged端口，不同点是native VLAN中的数据包从native-untagged端口出去时，会被去掉802.1Q头部。
 
 ### L2vni and L3vni
 
