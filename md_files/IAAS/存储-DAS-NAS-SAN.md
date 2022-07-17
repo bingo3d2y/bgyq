@@ -2,6 +2,209 @@
 
 github的全文搜索真香--
 
+### lvm卷扩容
+
+LVM是逻辑盘卷管理（LogicalVolumeManager）的简称，在Linux环境下对磁盘分区进行管理的一种机制，LVM是建立在硬盘和 分区之上的一个逻辑层，来提高磁盘分区管理的灵活性。通过LVM系统管理员可以轻松管理磁盘分区，如：将若干个磁盘分区连接为一个整块的卷（volumegroup），形成一个存储池。管理员可以在卷组上随意创建逻辑卷组（logicalvolumes），并进一步在逻辑卷组上创建文件系统。
+
+**LVM组成**
+
+Logical Volume Manager(逻辑卷管理)
+
+PV:是物理的磁盘分区
+
+VG:LVM中的物理的磁盘分区，也就是PV，必须加入VG，可以将VG理解为一个仓库统一管理了几个大的硬盘，形成了一个统一虚拟的存储资源池。
+
+LV：也就是从VG中划分的逻辑分区
+
+#### 扩容物理磁盘
+
+修改虚拟机配置或者扩充物理机磁盘
+
+```bash
+## 确定物理磁盘是否扩容成功
+$ lsblk 
+NAME          MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+# 已扩容到500G
+sda             8:0    0  500G  0 disk 
+├─sda1          8:1    0  600M  0 part /boot/efi
+├─sda2          8:2    0    1G  0 part /boot
+└─sda3          8:3    0 98.4G  0 part 
+  ├─klas-root 252:0    0   20G  0 lvm  /
+  ├─klas-swap 252:1    0   16G  0 lvm  [SWAP]
+  ├─klas-home 252:2    0   10G  0 lvm  /home
+  ├─klas-var  252:3    0   10G  0 lvm  /var
+  ├─klas-tmp  252:4    0   10G  0 lvm  /tmp
+  └─klas-opt  252:5    0 32.4G  0 lvm  /opt
+sr0            11:0    1 1024M  0 rom  
+```
+
+#### 磁盘分区
+
+parted 命令用于创建，查看，删除和修改磁盘分区。它是一个磁盘分区和分区大小调整工具。这个命令算是对fdisk命令的一个补充，使用gpt(全局唯一标示磁盘分区表格式)的分区表，因为如果磁盘大小大于2TB就无法使用fdisk命令进行分区操作了（MBR 的最大可循地址为2T）。
+
+```bash
+$ parted   /dev/sda
+GNU Parted 3.3
+Using /dev/sda
+Welcome to GNU Parted! Type 'help' to view a list of commands.
+(parted) help
+  align-check TYPE N                       check partition N for TYPE(min|opt) alignment
+  help [COMMAND]                           print general help, or help on COMMAND
+  mklabel,mktable LABEL-TYPE               create a new disklabel (partition table)
+  mkpart PART-TYPE [FS-TYPE] START END     make a partition
+  name NUMBER NAME                         name partition NUMBER as NAME
+  print [devices|free|list,all|NUMBER]     display the partition table, available devices, free space, all found partitions, or a particular partition
+  quit                                     exit program
+  rescue START END                         rescue a lost partition near START and END
+  resizepart NUMBER END                    resize partition NUMBER
+  rm NUMBER                                delete partition NUMBER
+  select DEVICE                            choose the device to edit
+  disk_set FLAG STATE                      change the FLAG on selected device
+  disk_toggle [FLAG]                       toggle the state of FLAG on selected device
+  set NUMBER FLAG STATE                    change the FLAG on partition NUMBER
+  toggle [NUMBER [FLAG]]                   toggle the state of FLAG on partition NUMBER
+  # (parted) unit s 可以设置磁盘的计数单位是磁柱即fdisk的格式
+  unit UNIT                                set the default unit to UNIT
+  version                                  display the version number and copyright information of GNU Parted
+# 简写输入 p 也行
+(parted) print                                                            
+Warning: Not all of the space available to /dev/sda appears to be used, you can fix the GPT to use all of the space (an extra 838860800 blocks) or continue with the
+current setting? 
+## 因为磁盘扩容了，需要修复 GPT信息
+Fix/Ignore? Fix
+Model: QEMU QEMU HARDDISK (scsi)
+Disk /dev/sda: 537GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+# start： 开始大小
+# end：结束大小 ，类似fdisk分区时指定的磁柱numbers，但是这个比较直观
+Number  Start   End     Size    File system  Name                  Flags
+ 1      1049kB  630MB   629MB   fat32        EFI System Partition  boot, esp
+ 2      630MB   1704MB  1074MB  xfs
+ 3      1704MB  107GB   106GB                                      lvm
+
+(parted) mk                                                               
+mklabel  mkpart   mktable  
+# make a partition，创建一个新的磁盘分区
+(parted) mkpart 4
+## 默认使用ext2文件系统，因为是给lv扩容，所以无所谓文件系统？ 这里选择默认即可
+File system type?  [ext2]?   
+## 分区开始位置大小，从partition 3 结束的107G开始
+Start? 108GB                                
+## 100%即将磁盘剩余大小都给partition 4
+End? 100%                                                                 
+(parted) p                                                                
+Model: QEMU QEMU HARDDISK (scsi)
+Disk /dev/sda: 537GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name                  Flags
+ 1      1049kB  630MB   629MB   fat32        EFI System Partition  boot, esp
+ 2      630MB   1704MB  1074MB  xfs
+ 3      1704MB  107GB   106GB                                      lvm
+ # 多了一个新的分区
+ 4      108GB   537GB   429GB   ext2         4
+# quit
+(parted) q                                                                
+Information: You may need to update /etc/fstab.
+```
+
+#### lv扩容
+
+logical volume扩容分为两部：
+
+* 所属vg扩容：将磁盘分区加入volume group
+
+  这里不需要使用pvcreate 将磁盘分区创建为pv？
+
+* logical volume扩容
+
+  这里logical volume filesystem会覆盖disk partition filesystem
+
+* 文件系统扩容
+
+```bash
+# 将磁盘加入到 VG卷组。
+# vgdisplay 显示vg信息
+$ vgextend klas /dev/sda4
+  Physical volume "/dev/sda4" successfully created.
+  Volume group "klas" successfully extended
+
+# 扩容逻辑卷 -l 指定的是PE数量 -L +800GB
+# Extend an LV by a specified size.
+#  lvextend -L|--size [+]Size[m|UNIT] LV
+#	[ -l|--extents [+]Number[PERCENT] ]
+# lvdisplay显示lv信息和名字
+$ lvextend -L +300G /dev/klas/root
+  Size of logical volume klas/root changed from 20.00 GiB (5120 extents) to 320.00 GiB (81920 extents).
+  Logical volume klas/root successfully resized.
+
+# mount | grep root 查看使用的文件系统信息
+# 修改文件系统的大小，xfs 文件系统使用xfs_growfs。 
+$ xfs_growfs /dev/klas/root
+meta-data=/dev/mapper/klas-root  isize=512    agcount=4, agsize=1310720 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1
+data     =                       bsize=4096   blocks=5242880, imaxpct=25
+         =                       sunit=0      swidth=0 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=2560, version=2
+         =                       sectsz=512   sunit=0 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+data blocks changed from 5242880 to 83886080
+
+# 验证扩容结果
+$ df -h
+Filesystem             Size  Used Avail Use% Mounted on
+devtmpfs               7.1G     0  7.1G   0% /dev
+tmpfs                  7.3G  192K  7.3G   1% /dev/shm
+tmpfs                  7.3G   22M  7.3G   1% /run
+tmpfs                  7.3G     0  7.3G   0% /sys/fs/cgroup
+/dev/mapper/klas-root  320G   18G  303G   6% /
+...
+/dev/sda1              599M  6.5M  593M   2% /boot/efi
+tmpfs                  1.5G     0  1.5G   0% /run/user/1002
+```
+
+end
+
+### 开机自动挂载磁盘
+
+#### 获取磁盘uuid
+
+```bash
+#  blkid - locate/print block device attributes
+root@Dodo:~# blkid
+/dev/vda1: LABEL="/" UUID="7fe02849-d810-401f-b7f8-e5782ca5939d" TYPE="ext4" PARTUUID="0f77bf27-01"
+
+```
+
+#### 配置自动挂载
+
+详细参数后续补充
+
+```bash
+$ cat /etc/fstab
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+# / was on /dev/vda1 during installation
+UUID=7fe02849-d810-401f-b7f8-e5782ca5939d /               ext4    errors=remount-ro 0       1
+/dev/fd0        /media/floppy0  auto    rw,user,noauto,exec,utf8 0       0
+
+```
+
+end
+
 ### 存储容量计算
 
 鲲鹏存储服务器配置：2个鲲鹏48核 CPU，256G内存，2个480G SSD，1个2G缓存raid卡，5个7.68T NVME SSD，2个双口万兆网卡，2个千兆四口网卡，双电源。
